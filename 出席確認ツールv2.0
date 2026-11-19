@@ -1,0 +1,1185 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="light dark" />
+<link rel="icon" href="data:," />
+<title>出席確認ツール Supabase版</title>
+<style>
+  :root{
+    --bg:#f4f5f3; --surface:#ffffff; --surface2:#eceee9; --line:#d8dcd3;
+    --text:#1c211a; --muted:#5c665a; --accent:#2f6b3a; --accent-text:#ffffff;
+    --green:#1d8a4c; --green-bg:#dff3e5; --green-text:#0d5c2d;
+    --red:#c62f2f; --red-bg:#fbe3e1; --red-text:#8f1d1d;
+    --gray-bg:#e3e6e1; --gray-text:#55604f;
+    --warn-bg:#fff3d6; --warn-text:#7a5200; --warn-line:#e3c26a;
+    --danger:#b3261e; --shadow:0 1px 3px rgba(20,30,18,.12);
+    --radius:10px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#141713; --surface:#1e221d; --surface2:#262b24; --line:#394035;
+      --text:#e8ece5; --muted:#a3ada0; --accent:#4c9a5f; --accent-text:#0e1a10;
+      --green:#3cb56b; --green-bg:#173d27; --green-text:#a9e8c2;
+      --red:#e05a4e; --red-bg:#471f1c; --red-text:#ffc4bd;
+      --gray-bg:#2c332b; --gray-text:#b9c2b5;
+      --warn-bg:#453610; --warn-text:#ffd98a; --warn-line:#8a6d1f;
+      --danger:#e5736a; --shadow:0 1px 3px rgba(0,0,0,.5);
+    }
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic UI","Yu Gothic",Meiryo,system-ui,sans-serif;
+    line-height:1.55;font-size:15px}
+  button,[role="button"],select,input{font:inherit}
+  button,select,input[type="date"]{min-height:40px}
+  button{cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--text);
+    border-radius:8px;padding:6px 14px;font-weight:600}
+  button:hover{border-color:var(--muted)}
+  button:disabled{opacity:.5;cursor:default}
+  button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-text)}
+  button.danger{color:var(--danger);border-color:var(--danger);background:transparent}
+  button.small{padding:2px 10px;min-height:36px;font-size:13px}
+  input[type="text"],input[type="email"],input[type="password"],input[type="number"],select{
+    border:1px solid var(--line);background:var(--surface);color:var(--text);
+    border-radius:8px;padding:7px 10px;min-height:40px;width:100%}
+  input:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .wrap{max-width:1080px;margin:0 auto;padding:16px 14px 64px}
+  h1{font-size:22px;margin:0 0 4px}
+  h2{font-size:18px;margin:0 0 10px}
+  h3{font-size:15px;margin:0 0 8px}
+  .muted{color:var(--muted);font-size:13px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:16px;margin-bottom:16px}
+  .hidden{display:none !important}
+
+  /* ---------- auth ---------- */
+  .auth-wrap{max-width:420px;margin:8vh auto 0;padding:0 14px}
+  .auth-card{background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    box-shadow:var(--shadow);padding:26px 22px}
+  .auth-card label{display:block;font-weight:700;font-size:13px;margin:14px 0 5px}
+  .auth-card .primary{width:100%;margin-top:20px;min-height:46px;font-size:16px}
+  .msg{border-radius:8px;padding:10px 12px;font-size:14px;margin-top:14px;display:none}
+  .msg.err{display:block;background:var(--red-bg);color:var(--red-text)}
+  .msg.ok{display:block;background:var(--green-bg);color:var(--green-text)}
+
+  /* ---------- top bar ---------- */
+  .topbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .topbar .who{font-size:13px;color:var(--muted);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .conn{display:inline-flex;align-items:center;gap:6px;font-size:12px}
+  .conn .dot{width:9px;height:9px;border-radius:50%;background:var(--gray-text)}
+  .conn.on .dot{background:var(--green)}
+  .conn.off .dot{background:var(--red)}
+
+  /* ---------- lists home ---------- */
+  .list-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+  .list-item{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);
+    padding:14px;display:flex;flex-direction:column;gap:8px}
+  .list-item .name{font-weight:800;font-size:17px;word-break:break-all}
+  .list-item .meta{font-size:12px;color:var(--muted)}
+  .list-item .ops{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}
+  .new-list{display:flex;gap:8px;flex-wrap:wrap}
+  .new-list input{flex:1 1 220px}
+
+  /* ---------- date nav ---------- */
+  .date-nav{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap}
+  .date-nav input[type="date"]{flex:0 1 190px}
+  .date-title{font-size:19px;font-weight:800;margin:10px 0 2px}
+  .cal{margin-top:12px;border:1px solid var(--line);border-radius:var(--radius);padding:10px;background:var(--surface)}
+  .cal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .cal-head .ym{font-weight:800}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+  .cal-grid .dow{text-align:center;font-size:11px;color:var(--muted);padding:3px 0}
+  .cal-day{border:1px solid transparent;background:transparent;border-radius:7px;min-height:38px;
+    font-size:13px;position:relative;padding:2px;color:var(--text)}
+  .cal-day:hover{border-color:var(--muted)}
+  .cal-day.today{border-color:var(--accent);font-weight:800}
+  .cal-day.sel{background:var(--accent);color:var(--accent-text);font-weight:800}
+  .cal-day .rec{position:absolute;left:50%;bottom:3px;transform:translateX(-50%);
+    width:6px;height:6px;border-radius:50%;background:var(--green)}
+  .cal-day.sel .rec{background:var(--accent-text)}
+  .cal-day.dim{opacity:.35}
+
+  /* ---------- summary / controls ---------- */
+  .summary{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .sum-chip{border-radius:999px;padding:5px 13px;font-weight:800;font-size:14px}
+  .sum-chip.p{background:var(--green-bg);color:var(--green-text)}
+  .sum-chip.a{background:var(--red-bg);color:var(--red-text)}
+  .sum-chip.u{background:var(--gray-bg);color:var(--gray-text)}
+  .sum-bar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--gray-bg);margin-top:10px}
+  .sum-bar .bp{background:var(--green)} .sum-bar .ba{background:var(--red)}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
+  .controls select{width:auto}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .seg button{border:none;border-radius:0;background:var(--surface);min-height:40px;padding:6px 14px}
+  .seg button.active{background:var(--accent);color:var(--accent-text)}
+  .seg button + button{border-left:1px solid var(--line)}
+
+  /* ---------- standard rows ---------- */
+  .row-head,.arow{display:grid;gap:8px;align-items:center;
+    grid-template-columns:64px minmax(110px,1.2fr) minmax(100px,1fr) 218px minmax(110px,1fr) minmax(110px,1fr)}
+  .row-head{font-size:12px;color:var(--muted);font-weight:700;padding:0 10px 4px}
+  .arow{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:9px 10px;margin-bottom:7px}
+  .arow .no{font-weight:800;text-align:center;font-size:16px}
+  .arow .nm{font-weight:700;word-break:break-all}
+  .arow .pos{color:var(--muted);font-size:13px;word-break:break-all}
+  .status-seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;width:100%}
+  .status-seg button{flex:1;border:none;border-radius:0;background:var(--surface);min-height:38px;
+    padding:4px 2px;font-size:13px;color:var(--muted)}
+  .status-seg button + button{border-left:1px solid var(--line)}
+  .status-seg button.on-p{background:var(--green);color:#fff;font-weight:800}
+  .status-seg button.on-a{background:var(--red);color:#fff;font-weight:800}
+  .status-seg button.on-u{background:var(--gray-bg);color:var(--gray-text);font-weight:800}
+  .arow input[type="text"]{min-height:38px;font-size:14px}
+  .arow.has-injury{border-color:var(--warn-line)}
+  .inj-tag{display:inline-block;background:var(--warn-bg);color:var(--warn-text);
+    border:1px solid var(--warn-line);border-radius:6px;font-size:12px;font-weight:700;
+    padding:1px 7px;margin-top:3px;word-break:break-all}
+  @media (max-width:760px){
+    .row-head{display:none}
+    .arow{grid-template-columns:52px 1fr;grid-template-areas:"no nm" "no pos" "st status" "inj inj" "memo memo"}
+    .arow .no{grid-area:no} .arow .nm{grid-area:nm} .arow .pos{grid-area:pos}
+    .arow .stcell{grid-area:st} .arow .injcell{grid-area:inj} .arow .memocell{grid-area:memo}
+    .arow .pos:empty{display:none}
+  }
+
+  /* ---------- simple list ---------- */
+  .simple-table{width:100%;border-collapse:collapse;background:var(--surface);
+    border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .simple-table th,.simple-table td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);font-size:15px}
+  .simple-table th{font-size:12px;color:var(--muted);background:var(--surface2)}
+  .simple-table tr:last-child td{border-bottom:none}
+  .simple-table td.sno{font-weight:800;text-align:center;width:76px;font-size:17px}
+  td.sno.p{background:var(--green-bg);color:var(--green-text)}
+  td.sno.a{background:var(--red-bg);color:var(--red-text)}
+  td.sno.u{background:var(--gray-bg);color:var(--gray-text)}
+  .st-label{font-weight:800}
+  .st-label.p{color:var(--green-text)} .st-label.a{color:var(--red-text)} .st-label.u{color:var(--gray-text)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;margin-top:8px;color:var(--muted)}
+  .legend .sw{display:inline-block;width:14px;height:14px;border-radius:4px;vertical-align:-2px;margin-right:5px}
+  .sw.p{background:var(--green)} .sw.a{background:var(--red)} .sw.u{background:#9aa294}
+
+  /* ---------- members ---------- */
+  details.members{margin-top:4px}
+  details.members summary{cursor:pointer;font-weight:800;font-size:16px;min-height:40px;
+    display:flex;align-items:center}
+  .mrow{display:grid;gap:8px;grid-template-columns:70px 1fr 1fr auto auto;align-items:center;margin-bottom:7px}
+  @media (max-width:640px){ .mrow{grid-template-columns:60px 1fr 1fr} .mrow .ops{grid-column:1/-1;display:flex;gap:6px} }
+  .add-member{display:grid;gap:8px;grid-template-columns:70px 1fr 1fr auto;margin-bottom:12px}
+  @media (max-width:640px){ .add-member{grid-template-columns:60px 1fr} }
+  .empty{padding:26px 10px;text-align:center;color:var(--muted)}
+  .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(20px);
+    background:var(--text);color:var(--bg);padding:10px 18px;border-radius:999px;font-size:14px;
+    opacity:0;pointer-events:none;transition:.25s;z-index:50;max-width:92vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .backrow{margin-bottom:10px}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);
+    border-top-color:var(--accent);border-radius:50%;animation:sp 0.8s linear infinite;vertical-align:-2px}
+  @media (prefers-reduced-motion: no-preference){ @keyframes sp{to{transform:rotate(360deg)}} }
+  @media (prefers-reduced-motion: reduce){ .spin{animation:none} .toast{transition:none} }
+</style>
+</head>
+<body>
+
+<!-- ================= ログイン ================= -->
+<div id="authView" class="auth-wrap">
+  <div class="auth-card">
+    <h1>出席確認ツール</h1>
+    <p class="muted">共有データにアクセスするには、招待されたアカウントでログインしてください。新規登録は管理者がSupabase側で行います（この画面からは登録できません）。</p>
+    <form id="loginForm">
+      <label for="email">メールアドレス</label>
+      <input type="email" id="email" autocomplete="username" required placeholder="example@mail.com" />
+      <label for="password">パスワード</label>
+      <input type="password" id="password" autocomplete="current-password" required />
+      <button type="submit" class="primary" id="loginBtn">ログイン</button>
+      <div class="msg" id="authMsg" role="alert"></div>
+    </form>
+    <p class="muted" style="margin-top:16px">接続先：Supabase（東京リージョン）／ データはログインした人だけが読み書きできます。</p>
+    <p class="muted">接続状態：<span id="authConn">確認中…</span> <button type="button" class="small" id="retryConnBtn">再接続</button></p>
+    <p class="muted" id="connDetail" style="word-break:break-all"></p>
+    <p class="muted">サーバー到達テスト：<a id="healthLink" href="#" target="_blank" rel="noopener">テスト用ページを開く</a><br />
+    開いたページに <code>{"version": …}</code> のような英字の文が表示されれば、サーバーには届いています。なお、キーを付けずに開いたときの「No API key found in request」という表示も、サーバーに届いた証拠で、エラーではありません。</p>
+    <p class="muted" id="envHint"></p>
+  </div>
+</div>
+
+<!-- ================= アプリ ================= -->
+<div id="appView" class="wrap hidden">
+  <div class="topbar">
+    <div class="who">
+      <span id="userEmail"></span>
+      <span class="conn" id="connBadge"><span class="dot"></span><span id="connText">接続中…</span></span>
+    </div>
+    <button id="logoutBtn" class="small">ログアウト</button>
+  </div>
+
+  <!-- ホーム：リスト一覧 -->
+  <section id="homeView">
+    <div class="card">
+      <h2>リストを選ぶ</h2>
+      <p class="muted">リストは複数作れます。クラス・チームごとに分けて、日ごとに記録します。変更はログイン中の全員の画面に自動で反映されます。</p>
+      <div id="listGrid" class="list-grid" style="margin-top:12px"></div>
+      <div id="listEmpty" class="empty hidden">まだリストがありません。下から最初のリストを作成してください。</div>
+    </div>
+    <div class="card">
+      <h3>新しいリストを作成</h3>
+      <form class="new-list" id="newListForm">
+        <input type="text" id="newListName" placeholder="リスト名（例：白組 全体、白組 守備）" required maxlength="60" />
+        <button type="submit" class="primary">作成する</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- リスト詳細 -->
+  <section id="detailView" class="hidden">
+    <div class="backrow"><button id="backBtn" class="small">← ホーム（リスト一覧）に戻る</button></div>
+
+    <div class="card">
+      <h2 id="detailTitle">リスト</h2>
+      <div class="date-title" id="dateTitle"></div>
+      <p class="muted" id="dateSub"></p>
+      <div class="date-nav">
+        <button id="prevDayBtn">◀ 前日</button>
+        <input type="date" id="dateInput" />
+        <button id="nextDayBtn">翌日 ▶</button>
+        <button id="todayBtn">今日</button>
+        <button id="calToggleBtn" aria-expanded="false">カレンダー</button>
+      </div>
+      <div class="cal hidden" id="calBox">
+        <div class="cal-head">
+          <button class="small" id="calPrev">◀</button>
+          <span class="ym" id="calYM"></span>
+          <button class="small" id="calNext">▶</button>
+        </div>
+        <div class="cal-grid" id="calGrid"></div>
+        <p class="muted" style="margin:6px 2px 0">● は記録がある日です。日をタップするとその日に移動します。</p>
+      </div>
+
+      <div style="margin-top:16px">
+        <div class="summary" id="summaryChips"></div>
+        <div class="sum-bar"><div class="bp" id="barP"></div><div class="ba" id="barA"></div></div>
+      </div>
+
+      <div class="controls">
+        <div class="seg" role="group" aria-label="表示切替">
+          <button id="viewStdBtn" class="active">標準リスト</button>
+          <button id="viewSimpleBtn">簡易リスト</button>
+        </div>
+        <select id="filterSel" aria-label="絞り込み">
+          <option value="all">すべて表示</option>
+          <option value="present">出席のみ</option>
+          <option value="absent">欠席のみ</option>
+          <option value="unconfirmed">未確認のみ</option>
+          <option value="injury">怪我ありのみ</option>
+        </select>
+        <button id="allPresentBtn">全員出席にする</button>
+        <button id="resetDayBtn">この日をリセット</button>
+        <button id="csvBtn">CSV書き出し</button>
+      </div>
+    </div>
+
+    <div id="stdArea">
+      <div class="row-head"><span>出席番号</span><span>名前</span><span>ポジション</span><span>出席状態</span><span>怪我</span><span>メモ</span></div>
+      <div id="stdRows"></div>
+      <div id="stdEmpty" class="empty hidden">表示できるメンバーがいません。メンバー管理から登録するか、絞り込みを変えてください。</div>
+    </div>
+
+    <div id="simpleArea" class="hidden">
+      <table class="simple-table">
+        <thead><tr><th style="text-align:center">出席番号</th><th>名前</th><th>状態</th></tr></thead>
+        <tbody id="simpleRows"></tbody>
+      </table>
+      <div id="simpleEmpty" class="empty hidden">表示できるメンバーがいません。</div>
+      <div class="legend">
+        <span><span class="sw p"></span>出席</span>
+        <span><span class="sw a"></span>欠席</span>
+        <span><span class="sw u"></span>未確認</span>
+        <span>色は出席番号のセルにつきます</span>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:18px">
+      <details class="members" id="memberDetails">
+        <summary>メンバー管理（登録・編集・削除）</summary>
+        <div style="margin-top:12px">
+          <form class="add-member" id="addMemberForm">
+            <input type="text" id="mNo" placeholder="番号" inputmode="numeric" maxlength="10" aria-label="出席番号" />
+            <input type="text" id="mName" placeholder="名前" required maxlength="40" aria-label="名前" />
+            <input type="text" id="mPos" placeholder="ポジション" list="posList" maxlength="40" aria-label="ポジション" />
+            <button type="submit" class="primary">追加</button>
+          </form>
+          <datalist id="posList">
+            <option value="迎撃 座衣"></option><option value="迎撃 立衣"></option>
+            <option value="迎撃 ライン"></option><option value="Lサ LD"></option>
+            <option value="Lサ サード"></option><option value="遊撃 マーカー"></option>
+            <option value="遊撃 ゾーン"></option><option value="攻撃 ノリ"></option>
+            <option value="攻撃 サポ"></option><option value="攻撃 ノリサポ"></option>
+          </datalist>
+          <div id="memberRows"></div>
+          <p class="muted">メンバーを削除すると、その人の過去の出席記録も一緒に削除されます。</p>
+        </div>
+      </details>
+    </div>
+  </section>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(function(){
+"use strict";
+var SUPABASE_URL = "https://ancuniknxmitlehiyhei.supabase.co";
+var SUPABASE_KEY = "sb_publishable_wQ_GRSepkzdymZ7y96n1Vw_ErR0Rbl-";
+
+var sb = null;
+var state = {
+  user: null,
+  lists: [],
+  currentListId: null,
+  members: [],
+  att: {},              // member_id -> attendance record (selected date)
+  recordedDates: {},    // 'YYYY-MM-DD' -> true (visible month range cache)
+  date: fmtDate(new Date()),
+  calCursor: null,      // Date at month shown in calendar
+  view: "standard",     // 'standard' | 'simple'
+  filter: "all",
+  pendingAttReload: false,
+  channel: null
+};
+
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
+  return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+function pad(n){ return (n < 10 ? "0" : "") + n; }
+function fmtDate(d){ return d.getFullYear() + "-" + pad(d.getMonth()+1) + "-" + pad(d.getDate()); }
+function parseDate(s){ var p = s.split("-"); return new Date(+p[0], +p[1]-1, +p[2]); }
+function addDays(s, n){ var d = parseDate(s); d.setDate(d.getDate()+n); return fmtDate(d); }
+var DOW = ["日","月","火","水","木","金","土"];
+function dateLabel(s){ var d = parseDate(s); return d.getFullYear() + "年" + (d.getMonth()+1) + "月" + d.getDate() + "日（" + DOW[d.getDay()] + "）"; }
+var toastTimer = null;
+function toast(msg){ var t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(function(){ t.classList.remove("show"); }, 2600); }
+function errText(e){ if(!e) return "不明なエラー"; return e.message || String(e); }
+
+/* ================= Supabase クライアント（内蔵・fetch直接接続） =================
+   外部CDNのライブラリに依存せず、Supabaseの REST / Auth API を直接呼ぶ。
+   セッションはメモリ上のみで保持し、端末には保存しない。 */
+var _session = null;   // { access_token, refresh_token, user, expires_at }
+var _authCbs = [];
+var lastNetErr = "";   // 直近の通信失敗の詳細（画面に表示して原因を特定できるようにする）
+
+/* 通信は fetch → XMLHttpRequest の二経路で試す。
+   片方の経路が端末・ブラウザ側で遮断されても、もう片方で到達できるようにする。
+   Cookieは使わない（credentials: omit）ので、トラッキング防止機能の影響も受けない。 */
+function _normResp(status, text){
+  return {
+    ok: status >= 200 && status < 300,
+    status: status,
+    text: function(){ return Promise.resolve(text); },
+    json: function(){ try { return Promise.resolve(JSON.parse(text)); } catch (e) { return Promise.resolve(null); } }
+  };
+}
+function _fetchOnce(url, opts){
+  var fo = { method: opts.method || "GET", headers: opts.headers || {},
+    credentials: "omit", mode: "cors", cache: "no-store" };
+  if (opts.body != null) fo.body = opts.body;
+  var ctrl = null, timer = null;
+  if (window.AbortController) {
+    ctrl = new AbortController(); fo.signal = ctrl.signal;
+    timer = setTimeout(function(){ try { ctrl.abort(); } catch (e) {} }, 20000);
+  }
+  return fetch(url, fo).then(function(resp){
+    if (timer) clearTimeout(timer);
+    return resp.text().then(function(text){ return _normResp(resp.status, text); });
+  }, function(err){
+    if (timer) clearTimeout(timer);
+    throw err;
+  });
+}
+function _xhrOnce(url, opts){
+  return new Promise(function(resolve, reject){
+    var xhr = new XMLHttpRequest();
+    xhr.open(opts.method || "GET", url, true);
+    xhr.timeout = 20000;
+    var h = opts.headers || {};
+    for (var k in h) { try { xhr.setRequestHeader(k, h[k]); } catch (e) {} }
+    xhr.onreadystatechange = function(){
+      if (xhr.readyState === 4) resolve(_normResp(xhr.status, xhr.responseText || ""));
+    };
+    xhr.onerror = function(){ reject(new Error("通信が遮断されました（XHR）")); };
+    xhr.ontimeout = function(){ reject(new Error("応答が20秒以内に返りませんでした（XHR）")); };
+    xhr.send(opts.body != null ? opts.body : null);
+  });
+}
+function sbFetch(url, opts){
+  opts = opts || {};
+  return _fetchOnce(url, opts).catch(function(e1){
+    lastNetErr = "経路1(fetch): " + (e1 && e1.message ? e1.message : String(e1));
+    return _xhrOnce(url, opts).then(function(r){
+      if (r.status === 0) { lastNetErr += " / 経路2(XHR): 応答なし"; throw new Error("network"); }
+      return r;
+    }, function(e2){
+      lastNetErr += " / 経路2(XHR): " + (e2 && e2.message ? e2.message : String(e2));
+      throw e2;
+    });
+  }).catch(function(e){
+    /* 経路3：apikeyをURLパラメータで渡す方式。
+       ヘッダーが途中の経路で落とされる環境でも到達できる場合がある（サーバー側で受理を確認済み）。 */
+    if (url.indexOf("apikey=") !== -1) throw e;
+    var url3 = url + (url.indexOf("?") === -1 ? "?" : "&") + "apikey=" + encodeURIComponent(SUPABASE_KEY);
+    return _fetchOnce(url3, opts).catch(function(){
+      return _xhrOnce(url3, opts).then(function(r){
+        if (r.status === 0) { lastNetErr += " / 経路3(キーURL方式): 応答なし"; throw e; }
+        return r;
+      }, function(){ lastNetErr += " / 経路3(キーURL方式): 応答なし"; throw e; });
+    });
+  });
+}
+
+function _authHeaders(extra){
+  var h = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": "Bearer " + (_session ? _session.access_token : SUPABASE_KEY),
+    "Content-Type": "application/json"
+  };
+  if (extra) for (var k in extra) h[k] = extra[k];
+  return h;
+}
+function _parseErr(resp, data){
+  var msg = "";
+  if (data) msg = data.message || data.msg || data.error_description || data.error || "";
+  if (!msg) msg = "HTTP " + resp.status;
+  return { message: msg, status: resp.status };
+}
+function _refreshSession(){
+  if (!_session || !_session.refresh_token) return Promise.resolve(false);
+  return sbFetch(SUPABASE_URL + "/auth/v1/token?grant_type=refresh_token", {
+    method: "POST",
+    headers: { "apikey": SUPABASE_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: _session.refresh_token })
+  }).then(function(resp){
+    return resp.json().catch(function(){ return null; }).then(function(data){
+      if (!resp.ok || !data || !data.access_token) return false;
+      _session = {
+        access_token: data.access_token,
+        refresh_token: data.refresh_token || _session.refresh_token,
+        user: data.user || _session.user,
+        expires_at: Date.now() + (data.expires_in || 3600) * 1000
+      };
+      return true;
+    });
+  }).catch(function(){ return false; });
+}
+function _ensureToken(){
+  if (_session && _session.expires_at && Date.now() > _session.expires_at - 60000) {
+    return _refreshSession();
+  }
+  return Promise.resolve(true);
+}
+function _fireAuth(event){
+  _authCbs.forEach(function(cb){ try { cb(event, _session); } catch (e) {} });
+}
+
+function _execQB(qb){
+  return _ensureToken().then(function(){
+    var url = SUPABASE_URL + "/rest/v1/" + qb.table;
+    var params = new URLSearchParams();
+    var opts = { headers: _authHeaders() };
+    qb.filters.forEach(function(f){ params.append(f[0], f[1] + "." + f[2]); });
+    if (qb.op === "select") {
+      params.set("select", qb.cols);
+      if (qb.ord) params.set("order", qb.ord);
+      if (qb.lim != null) params.set("limit", qb.lim);
+      opts.method = "GET";
+      delete opts.headers["Content-Type"];
+    } else if (qb.op === "insert") {
+      opts.method = "POST";
+      opts.headers["Prefer"] = "return=minimal";
+      opts.body = JSON.stringify(qb.payload);
+    } else if (qb.op === "upsert") {
+      opts.method = "POST";
+      if (qb.conflict) params.set("on_conflict", qb.conflict);
+      opts.headers["Prefer"] = "resolution=merge-duplicates,return=minimal";
+      opts.body = JSON.stringify(qb.payload);
+    } else if (qb.op === "update") {
+      opts.method = "PATCH";
+      opts.headers["Prefer"] = "return=minimal";
+      opts.body = JSON.stringify(qb.payload);
+    } else if (qb.op === "delete") {
+      opts.method = "DELETE";
+      opts.headers["Prefer"] = "return=minimal";
+    }
+    var qs = params.toString();
+    if (qs) url += "?" + qs;
+    return sbFetch(url, opts).then(function(resp){
+      return resp.text().then(function(text){
+        var data = null;
+        if (text) { try { data = JSON.parse(text); } catch (e) { data = null; } }
+        if (!resp.ok) return { data: null, error: _parseErr(resp, data) };
+        return { data: data, error: null };
+      });
+    }).catch(function(e){
+      return { data: null, error: { message: "サーバーに接続できませんでした（通信エラー）" } };
+    });
+  });
+}
+
+function QB(table){
+  this.table = table; this.filters = []; this.ord = null; this.lim = null;
+  this.cols = "*"; this.op = "select"; this.payload = null; this.conflict = null; this._p = null;
+}
+QB.prototype.select = function(cols){ this.op = "select"; this.cols = cols || "*"; return this; };
+QB.prototype.insert = function(payload){ this.op = "insert"; this.payload = payload; return this; };
+QB.prototype.update = function(payload){ this.op = "update"; this.payload = payload; return this; };
+QB.prototype.delete = function(){ this.op = "delete"; return this; };
+QB.prototype.upsert = function(payload, opts){ this.op = "upsert"; this.payload = payload; this.conflict = opts && opts.onConflict; return this; };
+QB.prototype.eq = function(c, v){ this.filters.push([c, "eq", v]); return this; };
+QB.prototype.gte = function(c, v){ this.filters.push([c, "gte", v]); return this; };
+QB.prototype.lte = function(c, v){ this.filters.push([c, "lte", v]); return this; };
+QB.prototype.order = function(c, o){ this.ord = c + ((o && o.ascending === false) ? ".desc" : ".asc"); return this; };
+QB.prototype.limit = function(n){ this.lim = n; return this; };
+QB.prototype.then = function(onF, onR){
+  if (!this._p) this._p = _execQB(this);
+  return this._p.then(onF, onR);
+};
+
+function createLocalClient(){
+  return {
+    from: function(table){ return new QB(table); },
+    auth: {
+      signInWithPassword: function(cred){
+        return sbFetch(SUPABASE_URL + "/auth/v1/token?grant_type=password", {
+          method: "POST",
+          headers: { "apikey": SUPABASE_KEY, "Content-Type": "application/json" },
+          body: JSON.stringify({ email: cred.email, password: cred.password })
+        }).then(function(resp){
+          return resp.json().catch(function(){ return null; }).then(function(data){
+            if (!resp.ok || !data || !data.access_token) {
+              return { data: { user: null, session: null }, error: _parseErr(resp, data) };
+            }
+            _session = {
+              access_token: data.access_token,
+              refresh_token: data.refresh_token,
+              user: data.user,
+              expires_at: Date.now() + (data.expires_in || 3600) * 1000
+            };
+            _fireAuth("SIGNED_IN");
+            return { data: { user: data.user, session: _session }, error: null };
+          });
+        }).catch(function(e){
+          return { data: { user: null, session: null },
+            error: { message: "サーバーに接続できませんでした（通信エラー）。ネット接続を確認してください。" } };
+        });
+      },
+      getSession: function(){
+        return _ensureToken().then(function(){ return { data: { session: _session }, error: null }; });
+      },
+      onAuthStateChange: function(cb){
+        _authCbs.push(cb);
+        return { data: { subscription: { unsubscribe: function(){
+          _authCbs = _authCbs.filter(function(f){ return f !== cb; });
+        } } } };
+      },
+      signOut: function(){
+        var token = _session && _session.access_token;
+        _session = null;
+        _fireAuth("SIGNED_OUT");
+        if (token) {
+          sbFetch(SUPABASE_URL + "/auth/v1/logout", {
+            method: "POST",
+            headers: { "apikey": SUPABASE_KEY, "Authorization": "Bearer " + token }
+          }).catch(function(){});
+        }
+        return Promise.resolve({ error: null });
+      }
+    }
+  };
+}
+
+/* ================= 初期化 ================= */
+function checkConn(triesLeft){
+  // 接続確認（anonで読める keep_alive のみ使用。出欠データには触れない）
+  sb.from("keep_alive").select("id").limit(1).then(function(res){
+    if (!res.error) {
+      $("authConn").textContent = "Supabaseに接続できています";
+      $("connDetail").textContent = "";
+      setConn(true);
+      return;
+    }
+    if (triesLeft > 0) {
+      $("authConn").textContent = "確認中…（再試行しています）";
+      setTimeout(function(){ checkConn(triesLeft - 1); }, 1500);
+      return;
+    }
+    // RESTで届かない場合でも、認証サーバーに届けばログインは試せる
+    sbFetch(SUPABASE_URL + "/auth/v1/health", { headers: { "apikey": SUPABASE_KEY } }).then(function(r){
+      if (r.ok) {
+        $("authConn").textContent = "認証サーバーに接続できています（ログインを試せます）";
+        $("connDetail").textContent = "";
+        setConn(true);
+        return;
+      }
+      connFail(res.error);
+    }, function(){ connFail(res.error); });
+  });
+}
+function connFail(err){
+  $("authConn").textContent = "接続できませんでした（" + errText(err) + "）";
+  $("connDetail").textContent = "詳細：" + (lastNetErr || "応答がありませんでした") +
+    " ／ 下の「テスト用ページ」が開けて英字の文が表示される場合は、サーバーは正常で、このページを開いている環境（アプリ内プレビュー／端末内のファイル）が通信を止めています。公開用URL（https://…）をブラウザで直接開いてください。テスト用ページ自体が開けない場合は、Wi-Fi・回線を切り替えてから「再接続」を押してください。";
+  setConn(false);
+}
+
+function init(){
+  sb = createLocalClient();
+
+  $("healthLink").href = SUPABASE_URL + "/auth/v1/health?apikey=" + SUPABASE_KEY;
+  var hint = "";
+  if (location.protocol === "file:") {
+    hint = "注意：このページは端末内のファイルとして開かれています。ブラウザによってはローカルファイルからの通信が止められ、ログインできません。その場合は公開用URL（https://…）から開いてください。";
+  } else {
+    try {
+      if (window.self !== window.top) {
+        hint = "注意：アプリ内プレビューで開いている場合、プレビュー側の制限で外部サーバーへの通信が止まり、ログインできないことがあります。その場合は公開用URL（https://…）をブラウザで直接開いてください。";
+      }
+    } catch (e) { /* 判定できない場合は何も表示しない */ }
+  }
+  if (hint) $("envHint").textContent = hint;
+
+  checkConn(2);
+  $("retryConnBtn").addEventListener("click", function(){
+    $("authConn").textContent = "確認中…";
+    checkConn(2);
+  });
+
+  sb.auth.getSession().then(function(res){
+    if (res.data && res.data.session) { onSignedIn(res.data.session.user); }
+  });
+  sb.auth.onAuthStateChange(function(event, session){
+    if (session && session.user) { if (!state.user || state.user.id !== session.user.id) onSignedIn(session.user); }
+    else if (event === "SIGNED_OUT") { onSignedOut(); }
+  });
+
+  bindEvents();
+}
+
+function setConn(on){
+  var b = $("connBadge");
+  b.className = "conn " + (on ? "on" : "off");
+  $("connText").textContent = on ? "Supabase接続中（自動同期）" : "接続エラー";
+}
+
+/* ================= 認証 ================= */
+function bindEvents(){
+  $("loginForm").addEventListener("submit", function(ev){
+    ev.preventDefault();
+    var btn = $("loginBtn"); btn.disabled = true; btn.textContent = "ログイン中…";
+    var msg = $("authMsg"); msg.className = "msg"; msg.textContent = "";
+    var attempt = function(retried){
+      sb.auth.signInWithPassword({ email: $("email").value.trim(), password: $("password").value })
+        .then(function(res){
+          if (res.error && /通信エラー/.test(res.error.message) && !retried) {
+            btn.textContent = "再試行中…";
+            setTimeout(function(){ attempt(true); }, 1200);
+            return;
+          }
+          btn.disabled = false; btn.textContent = "ログイン";
+          if (res.error) {
+            msg.className = "msg err";
+            if (/invalid login credentials/i.test(res.error.message)) {
+              msg.textContent = "メールアドレスまたはパスワードが違います。";
+            } else if (/通信エラー/.test(res.error.message)) {
+              msg.textContent = "ログインできませんでした：サーバーに接続できませんでした（通信エラー）。" +
+                "詳細：" + (lastNetErr || "応答なし") +
+                " ／ 別のブラウザで開くか、Wi-Fi・回線を切り替えてから、もう一度お試しください。下の「サーバー到達テスト」で、サーバー側か、このページを開いている環境側かを切り分けできます。";
+            } else {
+              msg.textContent = "ログインできませんでした：" + res.error.message;
+            }
+          }
+          // 成功時は onAuthStateChange が画面を切り替える
+        });
+    };
+    attempt(false);
+  });
+
+  $("logoutBtn").addEventListener("click", function(){ sb.auth.signOut(); });
+
+  $("newListForm").addEventListener("submit", function(ev){
+    ev.preventDefault();
+    var name = $("newListName").value.trim(); if (!name) return;
+    sb.from("lists").insert({ name: name }).then(function(res){
+      if (res.error) { toast("作成に失敗：" + errText(res.error)); return; }
+      $("newListName").value = "";
+      toast("リスト「" + name + "」を作成しました");
+      loadLists();
+    });
+  });
+
+  $("backBtn").addEventListener("click", showHome);
+
+  $("prevDayBtn").addEventListener("click", function(){ setDate(addDays(state.date, -1)); });
+  $("nextDayBtn").addEventListener("click", function(){ setDate(addDays(state.date, 1)); });
+  $("todayBtn").addEventListener("click", function(){ setDate(fmtDate(new Date())); });
+  $("dateInput").addEventListener("change", function(){ if (this.value) setDate(this.value); });
+  $("calToggleBtn").addEventListener("click", function(){
+    var box = $("calBox"); var open = box.classList.toggle("hidden") === false;
+    this.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) { state.calCursor = parseDate(state.date); renderCalendar(); }
+  });
+  $("calPrev").addEventListener("click", function(){ state.calCursor.setMonth(state.calCursor.getMonth()-1); renderCalendar(); loadRecordedForMonth(); });
+  $("calNext").addEventListener("click", function(){ state.calCursor.setMonth(state.calCursor.getMonth()+1); renderCalendar(); loadRecordedForMonth(); });
+
+  $("viewStdBtn").addEventListener("click", function(){ setView("standard"); });
+  $("viewSimpleBtn").addEventListener("click", function(){ setView("simple"); });
+  $("filterSel").addEventListener("change", function(){ state.filter = this.value; renderAttendance(); });
+
+  $("allPresentBtn").addEventListener("click", function(){
+    if (!state.members.length) return;
+    var rows = state.members.map(function(m){
+      var cur = state.att[m.id] || {};
+      return { list_id: state.currentListId, member_id: m.id, date: state.date,
+        status: "present", injury: cur.injury || "", memo: cur.memo || "", updated_by: state.user.id };
+    });
+    sb.from("attendance").upsert(rows, { onConflict: "member_id,date" }).then(function(res){
+      if (res.error) { toast("保存に失敗：" + errText(res.error)); return; }
+      toast("全員を出席にしました"); loadAttendance();
+    });
+  });
+
+  $("resetDayBtn").addEventListener("click", function(){
+    if (!state.currentListId) return;
+    sb.from("attendance").delete().eq("list_id", state.currentListId).eq("date", state.date)
+      .then(function(res){
+        if (res.error) { toast("リセットに失敗：" + errText(res.error)); return; }
+        toast("この日の記録をリセットしました"); loadAttendance();
+      });
+  });
+
+  $("csvBtn").addEventListener("click", exportCsv);
+
+  $("addMemberForm").addEventListener("submit", function(ev){
+    ev.preventDefault();
+    var name = $("mName").value.trim(); if (!name) return;
+    sb.from("members").insert({
+      list_id: state.currentListId,
+      attendance_no: $("mNo").value.trim(),
+      name: name, position: $("mPos").value.trim()
+    }).then(function(res){
+      if (res.error) { toast("追加に失敗：" + errText(res.error)); return; }
+      $("mNo").value = ""; $("mName").value = ""; $("mPos").value = "";
+      $("mNo").focus();
+      toast(name + " さんを追加しました");
+      loadMembers().then(loadAttendance);
+    });
+  });
+}
+
+function onSignedIn(user){
+  state.user = user;
+  $("authView").classList.add("hidden");
+  $("appView").classList.remove("hidden");
+  $("userEmail").textContent = "ログイン中：" + (user.email || "");
+  setConn(true);
+  subscribeRealtime();
+  showHome();
+  loadLists();
+}
+function onSignedOut(){
+  state.user = null; state.lists = []; state.currentListId = null;
+  state.members = []; state.att = {};
+  if (state.channel) { clearInterval(state.channel); state.channel = null; }
+  $("appView").classList.add("hidden");
+  $("authView").classList.remove("hidden");
+  $("password").value = "";
+}
+
+/* ================= リスト（ホーム） ================= */
+function loadLists(){
+  return sb.from("lists").select("*").order("created_at", { ascending: true }).then(function(res){
+    if (res.error) { toast("リスト取得に失敗：" + errText(res.error)); return; }
+    state.lists = res.data || [];
+    renderLists();
+    if (state.currentListId) {
+      var cur = state.lists.filter(function(l){ return l.id === state.currentListId; })[0];
+      if (cur) $("detailTitle").textContent = cur.name;
+      else showHome();
+    }
+  });
+}
+function renderLists(){
+  var grid = $("listGrid"); grid.innerHTML = "";
+  $("listEmpty").classList.toggle("hidden", state.lists.length > 0);
+  // メンバー数をまとめて取得
+  sb.from("members").select("list_id").then(function(res){
+    var counts = {};
+    (res.data || []).forEach(function(r){ counts[r.list_id] = (counts[r.list_id] || 0) + 1; });
+    state.lists.forEach(function(l){
+      var card = document.createElement("div"); card.className = "list-item";
+      var upd = l.updated_at ? new Date(l.updated_at) : null;
+      card.innerHTML =
+        '<div class="name">' + esc(l.name) + '</div>' +
+        '<div class="meta">メンバー ' + (counts[l.id] || 0) + '人' +
+        (upd ? ' ／ 最終更新 ' + upd.getFullYear() + '/' + (upd.getMonth()+1) + '/' + upd.getDate() : '') + '</div>' +
+        '<div class="ops">' +
+          '<button class="primary small" data-act="open">開く</button>' +
+          '<button class="small" data-act="rename">名前変更</button>' +
+          '<button class="small danger" data-act="del">削除</button>' +
+        '</div>';
+      card.querySelector('[data-act="open"]').addEventListener("click", function(){ openList(l.id); });
+      card.querySelector('[data-act="rename"]').addEventListener("click", function(){
+        var wrap = document.createElement("div");
+        wrap.innerHTML = '<input type="text" maxlength="60" value="' + esc(l.name) + '" aria-label="新しいリスト名" />' +
+          '<div style="display:flex;gap:6px;margin-top:6px"><button class="primary small">保存</button><button class="small">キャンセル</button></div>';
+        card.replaceChild(wrap, card.querySelector(".name"));
+        var input = wrap.querySelector("input"); input.focus(); input.select();
+        wrap.querySelectorAll("button")[0].addEventListener("click", function(){
+          var v = input.value.trim(); if (!v) return;
+          sb.from("lists").update({ name: v }).eq("id", l.id).then(function(r){
+            if (r.error) { toast("変更に失敗：" + errText(r.error)); return; }
+            toast("名前を変更しました"); loadLists();
+          });
+        });
+        wrap.querySelectorAll("button")[1].addEventListener("click", renderLists);
+      });
+      card.querySelector('[data-act="del"]').addEventListener("click", function(){
+        var b = this;
+        if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "本当に削除？もう一度タップで確定"; return; }
+        sb.from("lists").delete().eq("id", l.id).then(function(r){
+          if (r.error) { toast("削除に失敗：" + errText(r.error)); return; }
+          toast("リストを削除しました");
+          if (state.currentListId === l.id) showHome();
+          loadLists();
+        });
+      });
+      grid.appendChild(card);
+    });
+  });
+}
+function showHome(){
+  state.currentListId = null;
+  $("detailView").classList.add("hidden");
+  $("homeView").classList.remove("hidden");
+}
+function openList(id){
+  state.currentListId = id;
+  var l = state.lists.filter(function(x){ return x.id === id; })[0];
+  $("detailTitle").textContent = l ? l.name : "リスト";
+  $("homeView").classList.add("hidden");
+  $("detailView").classList.remove("hidden");
+  state.calCursor = parseDate(state.date);
+  syncDateUI();
+  loadMembers().then(function(){ loadAttendance(); loadRecordedForMonth(); });
+}
+
+/* ================= メンバー ================= */
+function memberSort(a, b){
+  var na = parseFloat(a.attendance_no), nb = parseFloat(b.attendance_no);
+  var aNum = a.attendance_no !== "" && !isNaN(na), bNum = b.attendance_no !== "" && !isNaN(nb);
+  if (aNum && bNum) return na - nb;
+  if (aNum) return -1; if (bNum) return 1;
+  return String(a.attendance_no).localeCompare(String(b.attendance_no), "ja");
+}
+function loadMembers(){
+  if (!state.currentListId) return Promise.resolve();
+  return sb.from("members").select("*").eq("list_id", state.currentListId).then(function(res){
+    if (res.error) { toast("メンバー取得に失敗：" + errText(res.error)); return; }
+    state.members = (res.data || []).slice().sort(memberSort);
+    renderMembers();
+    renderAttendance();
+  });
+}
+function renderMembers(){
+  var box = $("memberRows"); box.innerHTML = "";
+  state.members.forEach(function(m){
+    var row = document.createElement("div"); row.className = "mrow";
+    row.innerHTML =
+      '<input type="text" value="' + esc(m.attendance_no) + '" maxlength="10" aria-label="出席番号" />' +
+      '<input type="text" value="' + esc(m.name) + '" maxlength="40" aria-label="名前" />' +
+      '<input type="text" value="' + esc(m.position) + '" maxlength="40" list="posList" aria-label="ポジション" />' +
+      '<span class="ops" style="display:flex;gap:6px"><button class="small primary">保存</button>' +
+      '<button class="small danger">削除</button></span>';
+    var inputs = row.querySelectorAll("input");
+    var btns = row.querySelectorAll("button");
+    btns[0].addEventListener("click", function(){
+      sb.from("members").update({
+        attendance_no: inputs[0].value.trim(), name: inputs[1].value.trim(), position: inputs[2].value.trim()
+      }).eq("id", m.id).then(function(r){
+        if (r.error) { toast("保存に失敗：" + errText(r.error)); return; }
+        toast("保存しました"); loadMembers();
+      });
+    });
+    btns[1].addEventListener("click", function(){
+      var b = this;
+      if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "本当に削除？"; return; }
+      sb.from("members").delete().eq("id", m.id).then(function(r){
+        if (r.error) { toast("削除に失敗：" + errText(r.error)); return; }
+        toast("削除しました"); loadMembers().then(loadAttendance);
+      });
+    });
+    box.appendChild(row);
+  });
+}
+
+/* ================= 日付・カレンダー ================= */
+function setDate(s){
+  state.date = s;
+  state.calCursor = parseDate(s);
+  syncDateUI();
+  loadAttendance();
+  loadRecordedForMonth();
+}
+function syncDateUI(){
+  $("dateInput").value = state.date;
+  $("dateTitle").textContent = dateLabel(state.date);
+  $("dateSub").textContent = state.date === fmtDate(new Date()) ? "今日の記録です。" : "";
+  if (!$("calBox").classList.contains("hidden")) renderCalendar();
+}
+function monthRange(d){
+  var first = new Date(d.getFullYear(), d.getMonth(), 1);
+  var last = new Date(d.getFullYear(), d.getMonth()+1, 0);
+  return [fmtDate(first), fmtDate(last)];
+}
+function loadRecordedForMonth(){
+  if (!state.currentListId || !state.calCursor) return;
+  var r = monthRange(state.calCursor);
+  sb.from("attendance").select("date").eq("list_id", state.currentListId)
+    .gte("date", r[0]).lte("date", r[1]).then(function(res){
+      if (res.error) return;
+      (res.data || []).forEach(function(row){ state.recordedDates[row.date] = true; });
+      if (!$("calBox").classList.contains("hidden")) renderCalendar();
+    });
+}
+function renderCalendar(){
+  var cur = state.calCursor; if (!cur) return;
+  $("calYM").textContent = cur.getFullYear() + "年 " + (cur.getMonth()+1) + "月";
+  var grid = $("calGrid"); grid.innerHTML = "";
+  DOW.forEach(function(w){ var d = document.createElement("div"); d.className = "dow"; d.textContent = w; grid.appendChild(d); });
+  var first = new Date(cur.getFullYear(), cur.getMonth(), 1);
+  var startDow = first.getDay();
+  var days = new Date(cur.getFullYear(), cur.getMonth()+1, 0).getDate();
+  var prevDays = new Date(cur.getFullYear(), cur.getMonth(), 0).getDate();
+  var today = fmtDate(new Date());
+  for (var i = 0; i < 42; i++) {
+    var dayNum, cellDate, dim = false;
+    if (i < startDow) { dayNum = prevDays - startDow + 1 + i; cellDate = new Date(cur.getFullYear(), cur.getMonth()-1, dayNum); dim = true; }
+    else if (i >= startDow + days) { dayNum = i - startDow - days + 1; cellDate = new Date(cur.getFullYear(), cur.getMonth()+1, dayNum); dim = true; }
+    else { dayNum = i - startDow + 1; cellDate = new Date(cur.getFullYear(), cur.getMonth(), dayNum); }
+    var key = fmtDate(cellDate);
+    var b = document.createElement("button");
+    b.className = "cal-day" + (dim ? " dim" : "") + (key === today ? " today" : "") + (key === state.date ? " sel" : "");
+    b.innerHTML = dayNum + (state.recordedDates[key] ? '<span class="rec"></span>' : "");
+    (function(k){ b.addEventListener("click", function(){ setDate(k); }); })(key);
+    grid.appendChild(b);
+    if (i >= startDow + days - 1 && (i+1) % 7 === 0) break;
+  }
+}
+
+/* ================= 出席 ================= */
+function loadAttendance(){
+  if (!state.currentListId) return Promise.resolve();
+  if (document.activeElement && document.activeElement.dataset && document.activeElement.dataset.field) {
+    state.pendingAttReload = true; return Promise.resolve();
+  }
+  return sb.from("attendance").select("*")
+    .eq("list_id", state.currentListId).eq("date", state.date).then(function(res){
+      if (res.error) { toast("記録の取得に失敗：" + errText(res.error)); return; }
+      state.att = {};
+      (res.data || []).forEach(function(r){ state.att[r.member_id] = r; });
+      if ((res.data || []).length) state.recordedDates[state.date] = true;
+      renderAttendance();
+    });
+}
+function recOf(m){ return state.att[m.id] || { status: "unconfirmed", injury: "", memo: "" }; }
+
+function saveAttendance(memberId, patch){
+  var cur = state.att[memberId] || {};
+  var row = {
+    list_id: state.currentListId, member_id: memberId, date: state.date,
+    status: patch.status != null ? patch.status : (cur.status || "unconfirmed"),
+    injury: patch.injury != null ? patch.injury : (cur.injury || ""),
+    memo: patch.memo != null ? patch.memo : (cur.memo || ""),
+    updated_by: state.user.id
+  };
+  // 楽観的に手元へ反映
+  state.att[memberId] = Object.assign({}, cur, row);
+  state.recordedDates[state.date] = true;
+  return sb.from("attendance").upsert(row, { onConflict: "member_id,date" }).then(function(res){
+    if (res.error) { toast("保存に失敗：" + errText(res.error)); loadAttendance(); }
+  });
+}
+
+function filteredMembers(){
+  return state.members.filter(function(m){
+    var r = recOf(m);
+    switch (state.filter) {
+      case "present": return r.status === "present";
+      case "absent": return r.status === "absent";
+      case "unconfirmed": return r.status === "unconfirmed";
+      case "injury": return !!(r.injury && r.injury.trim());
+      default: return true;
+    }
+  });
+}
+
+function renderAttendance(){
+  if (!state.currentListId) return;
+  // サマリー（絞り込みに関係なく全員分）
+  var p = 0, a = 0, u = 0;
+  state.members.forEach(function(m){
+    var s = recOf(m).status;
+    if (s === "present") p++; else if (s === "absent") a++; else u++;
+  });
+  $("summaryChips").innerHTML =
+    '<span class="sum-chip p">出席 ' + p + '</span>' +
+    '<span class="sum-chip a">欠席 ' + a + '</span>' +
+    '<span class="sum-chip u">未確認 ' + u + '</span>' +
+    '<span class="muted">合計 ' + state.members.length + '人</span>';
+  var total = Math.max(state.members.length, 1);
+  $("barP").style.width = (p / total * 100) + "%";
+  $("barA").style.width = (a / total * 100) + "%";
+
+  var list = filteredMembers();
+  renderStandard(list);
+  renderSimple(list);
+}
+
+function statusSeg(m, r){
+  var seg = document.createElement("div"); seg.className = "status-seg";
+  [["present","出席","on-p"],["absent","欠席","on-a"],["unconfirmed","未確認","on-u"]].forEach(function(cfg){
+    var b = document.createElement("button");
+    b.type = "button"; b.textContent = cfg[1];
+    if (r.status === cfg[0]) b.className = cfg[2];
+    b.setAttribute("aria-pressed", r.status === cfg[0] ? "true" : "false");
+    b.addEventListener("click", function(){
+      saveAttendance(m.id, { status: cfg[0] }).then(renderAttendance);
+    });
+    seg.appendChild(b);
+  });
+  return seg;
+}
+
+function textField(m, field, placeholder, val){
+  var input = document.createElement("input");
+  input.type = "text"; input.placeholder = placeholder; input.value = val || "";
+  input.maxLength = 200; input.dataset.field = field; input.dataset.mid = m.id;
+  var timer = null;
+  input.addEventListener("input", function(){
+    clearTimeout(timer);
+    timer = setTimeout(function(){
+      var patch = {}; patch[field] = input.value;
+      saveAttendance(m.id, patch);
+    }, 700);
+  });
+  input.addEventListener("blur", function(){
+    clearTimeout(timer);
+    var patch = {}; patch[field] = input.value;
+    var cur = recOf(m);
+    if ((cur[field] || "") !== input.value) saveAttendance(m.id, patch).then(renderAttendance);
+    else if (state.pendingAttReload) { state.pendingAttReload = false; loadAttendance(); }
+  });
+  return input;
+}
+
+function renderStandard(list){
+  var box = $("stdRows"); box.innerHTML = "";
+  $("stdEmpty").classList.toggle("hidden", list.length > 0);
+  list.forEach(function(m){
+    var r = recOf(m);
+    var row = document.createElement("div");
+    row.className = "arow" + (r.injury && r.injury.trim() ? " has-injury" : "");
+    var no = document.createElement("div"); no.className = "no"; no.textContent = m.attendance_no || "—";
+    var nm = document.createElement("div"); nm.className = "nm";
+    nm.innerHTML = esc(m.name) + (r.injury && r.injury.trim() ? '<br><span class="inj-tag">⚠ 怪我：' + esc(r.injury) + '</span>' : "");
+    var pos = document.createElement("div"); pos.className = "pos"; pos.textContent = m.position || "";
+    var st = document.createElement("div"); st.className = "stcell"; st.appendChild(statusSeg(m, r));
+    var inj = document.createElement("div"); inj.className = "injcell"; inj.appendChild(textField(m, "injury", "怪我（なければ空欄）", r.injury));
+    var memo = document.createElement("div"); memo.className = "memocell"; memo.appendChild(textField(m, "memo", "メモ", r.memo));
+    row.appendChild(no); row.appendChild(nm); row.appendChild(pos);
+    row.appendChild(st); row.appendChild(inj); row.appendChild(memo);
+    box.appendChild(row);
+  });
+}
+
+function renderSimple(list){
+  var tb = $("simpleRows"); tb.innerHTML = "";
+  $("simpleEmpty").classList.toggle("hidden", list.length > 0);
+  var labels = { present: "出席", absent: "欠席", unconfirmed: "未確認" };
+  var cls = { present: "p", absent: "a", unconfirmed: "u" };
+  list.forEach(function(m){
+    var r = recOf(m);
+    var tr = document.createElement("tr");
+    tr.innerHTML =
+      '<td class="sno ' + cls[r.status] + '">' + esc(m.attendance_no || "—") + '</td>' +
+      '<td><strong>' + esc(m.name) + '</strong>' +
+      (r.injury && r.injury.trim() ? '<br><span class="inj-tag">⚠ 怪我：' + esc(r.injury) + '</span>' : "") +
+      '</td>' +
+      '<td class="st-label ' + cls[r.status] + '">' + labels[r.status] + '</td>';
+    tb.appendChild(tr);
+  });
+}
+
+function setView(v){
+  state.view = v;
+  $("viewStdBtn").classList.toggle("active", v === "standard");
+  $("viewSimpleBtn").classList.toggle("active", v === "simple");
+  $("stdArea").classList.toggle("hidden", v !== "standard");
+  $("simpleArea").classList.toggle("hidden", v !== "simple");
+}
+
+/* ================= CSV ================= */
+function exportCsv(){
+  if (!state.currentListId) return;
+  var listName = ($("detailTitle").textContent || "リスト");
+  var labels = { present: "出席", absent: "欠席", unconfirmed: "未確認" };
+  function q(s){ return '"' + String(s == null ? "" : s).replace(/"/g, '""') + '"'; }
+  var lines = [["日付","リスト","出席番号","名前","ポジション","出席状態","怪我","メモ"].join(",")];
+  state.members.forEach(function(m){
+    var r = recOf(m);
+    lines.push([state.date, listName, m.attendance_no, m.name, m.position, labels[r.status], r.injury || "", r.memo || ""].map(q).join(","));
+  });
+  var blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "出席_" + listName + "_" + state.date + ".csv";
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 400);
+  toast("CSVを書き出しました");
+}
+
+/* ================= Realtime ================= */
+var rtTimer = null;
+function scheduleReload(what){
+  clearTimeout(rtTimer);
+  rtTimer = setTimeout(function(){
+    if (!state.user) return;
+    loadLists();
+    if (state.currentListId) {
+      if (what === "members") loadMembers().then(loadAttendance);
+      else if (what === "attendance") { loadAttendance(); loadRecordedForMonth(); }
+      else { loadMembers().then(function(){ loadAttendance(); loadRecordedForMonth(); }); }
+    }
+  }, 350);
+}
+function subscribeRealtime(){
+  // WebSocketではなく定期取得で同期する（接続方式を単純にして失敗点を減らす）。
+  // 10秒ごとに最新データを読み直し、他の人の変更を画面へ反映する。
+  if (state.channel) return;
+  setConn(true);
+  state.channel = setInterval(function(){
+    if (!state.user) return;
+    if (document.visibilityState && document.visibilityState !== "visible") return;
+    // 入力欄にフォーカスがある間は再読込しない（編集中の文字を消さないため）
+    var ae = document.activeElement;
+    if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT")) return;
+    scheduleReload("all");
+  }, 10000);
+}
+
+document.addEventListener("DOMContentLoaded", init);
+})();
+</script>
+</body>
+</html>
