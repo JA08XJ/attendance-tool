@@ -177,6 +177,16 @@
   details.members{margin-top:4px}
   details.members summary{cursor:pointer;font-weight:800;font-size:16px;min-height:40px;
     display:flex;align-items:center}
+  .member-lock{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface2);padding:10px 12px;margin-bottom:12px}
+  .member-lock-main{display:flex;flex-direction:column;gap:2px}
+  .lock-chip{display:inline-flex;align-items:center;gap:7px;font-weight:800;font-size:14px}
+  .lock-chip .dot{width:9px;height:9px;border-radius:50%;background:var(--red);flex:none}
+  .member-lock.unlocked .lock-chip .dot{background:var(--green)}
+  .member-pw{border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:var(--radius);padding:12px;margin-bottom:12px}
+  .member-pw label{display:block;font-weight:700;font-size:13px;margin-bottom:6px;color:var(--warn-text)}
+  .member-pw-row{display:flex;gap:8px;flex-wrap:wrap}
+  .member-pw-row input{flex:1 1 200px;background:var(--surface)}
+  .member-pw-err{color:var(--red-text);background:var(--red-bg);border-radius:8px;padding:8px 10px;font-size:14px;margin:10px 0 0}
   .mrow{display:grid;gap:8px;grid-template-columns:70px 1fr 1fr auto auto;align-items:center;margin-bottom:7px}
   @media (max-width:640px){ .mrow{grid-template-columns:60px 1fr 1fr} .mrow .ops{grid-column:1/-1;display:flex;gap:6px} }
   .add-member{display:grid;gap:8px;grid-template-columns:70px 1fr 1fr auto;margin-bottom:12px}
@@ -333,6 +343,23 @@
       <details class="members" id="memberDetails">
         <summary>メンバー管理（登録・編集・削除）</summary>
         <div style="margin-top:12px">
+          <div class="member-lock" id="memberLockBar">
+            <div class="member-lock-main">
+              <span class="lock-chip"><span class="dot"></span><span id="memberLockStatus">メンバー編集はロックされています</span></span>
+              <span class="muted" id="memberLockHint">メンバーの追加・変更・削除にはパスワードが必要です。</span>
+            </div>
+            <button type="button" id="memberUnlockBtn" class="small primary">ロック解除して編集する</button>
+            <button type="button" id="memberRelockBtn" class="small hidden">ロックし直す</button>
+          </div>
+          <form class="member-pw hidden" id="memberPwForm">
+            <label for="memberPwInput">メンバー編集パスワード</label>
+            <div class="member-pw-row">
+              <input type="password" id="memberPwInput" autocomplete="off" placeholder="パスワードを入力" />
+              <button type="submit" class="primary small">解除する</button>
+              <button type="button" id="memberPwCancel" class="small">キャンセル</button>
+            </div>
+            <p class="member-pw-err hidden" id="memberPwErr" role="alert">パスワードが違います。メンバー編集は開きませんでした。</p>
+          </form>
           <form class="add-member" id="addMemberForm">
             <input type="text" id="mNo" placeholder="番号" inputmode="numeric" maxlength="10" aria-label="出席番号" />
             <input type="text" id="mName" placeholder="名前" required maxlength="40" aria-label="名前" />
@@ -380,7 +407,8 @@ var state = {
   lastMemberId: null,
   progressMode: null,   // 'cloud' | 'local' | null
   progressKey: null,
-  highlightId: null
+  highlightId: null,
+  memberUnlocked: false // メンバー編集ロック（このタブのセッション中のみ保持）
 };
 
 function $(id){ return document.getElementById(id); }
@@ -708,6 +736,8 @@ function connFail(err){
 
 function init(){
   sb = createLocalClient();
+  restoreMemberUnlock();
+  renderMemberLock();
 
   $("healthLink").href = SUPABASE_URL + "/auth/v1/health?apikey=" + SUPABASE_KEY;
   var hint = "";
@@ -856,8 +886,29 @@ function bindEvents(){
 
   $("csvBtn").addEventListener("click", exportCsv);
 
+  $("memberUnlockBtn").addEventListener("click", function(){ openMemberPw(); });
+  $("memberRelockBtn").addEventListener("click", function(){
+    setMemberUnlocked(false);
+    toast("メンバー編集をロックしました");
+  });
+  $("memberPwCancel").addEventListener("click", function(){ closeMemberPw(); });
+  $("memberPwForm").addEventListener("submit", function(ev){
+    ev.preventDefault();
+    if ($("memberPwInput").value === MEMBER_EDIT_PASSWORD) {
+      setMemberUnlocked(true);
+      closeMemberPw();
+      toast("メンバー編集のロックを解除しました");
+      var n = $("mName"); if (n) n.focus();
+    } else {
+      $("memberPwErr").classList.remove("hidden");
+      $("memberPwInput").value = "";
+      $("memberPwInput").focus();
+    }
+  });
+
   $("addMemberForm").addEventListener("submit", function(ev){
     ev.preventDefault();
+    if (!requireMemberUnlock()) return;
     var name = $("mName").value.trim(); if (!name) return;
     sb.from("members").insert({
       list_id: state.currentListId,
@@ -875,6 +926,8 @@ function bindEvents(){
 
 function onSignedIn(user){
   state.user = user;
+  restoreMemberUnlock();
+  renderMemberLock();
   $("authView").classList.add("hidden");
   $("appView").classList.remove("hidden");
   $("userEmail").textContent = "ログイン中：" + (user.email || "");
@@ -884,6 +937,10 @@ function onSignedIn(user){
   loadLists();
 }
 function onSignedOut(){
+  // ログアウトしたらメンバー編集は再ロックする
+  state.memberUnlocked = false;
+  try { sessionStorage.removeItem(MEMBER_UNLOCK_KEY); } catch (e) {}
+  renderMemberLock();
   state.user = null; state.lists = []; state.currentListId = null;
   state.members = []; state.att = {}; state.myChecked = {}; state.lastMemberId = null; state.progressMode = null;
   if (state.channel) { clearInterval(state.channel); state.channel = null; }
@@ -966,12 +1023,66 @@ function openList(id){
   $("detailTitle").textContent = l ? l.name : "リスト";
   $("homeView").classList.add("hidden");
   $("detailView").classList.remove("hidden");
+  renderMemberLock();
   state.calCursor = parseDate(state.date);
   syncDateUI();
   loadMembers().then(function(){ loadAttendance(); loadRecordedForMonth(); loadMyProgress().then(function(){ renderAttendance(); }); });
 }
 
 /* ================= メンバー ================= */
+/* メンバー編集ロック：誤操作・いたずら防止のための簡易ロック。
+   対象はメンバーの追加・変更・削除のみ（出席／欠席・怪我・メモ・自分確認は対象外）。
+   解除状態はこのブラウザタブのセッション中だけ保持し、ログアウトで再ロックする。 */
+var MEMBER_EDIT_PASSWORD = "white";
+var MEMBER_UNLOCK_KEY = "attendance-tool.member-unlocked.v1";
+function restoreMemberUnlock(){
+  try { state.memberUnlocked = sessionStorage.getItem(MEMBER_UNLOCK_KEY) === "1"; }
+  catch (e) { state.memberUnlocked = false; }
+}
+function setMemberUnlocked(v){
+  state.memberUnlocked = !!v;
+  try {
+    if (v) sessionStorage.setItem(MEMBER_UNLOCK_KEY, "1");
+    else sessionStorage.removeItem(MEMBER_UNLOCK_KEY);
+  } catch (e) {}
+  renderMemberLock();
+  renderMembers();
+}
+function renderMemberLock(){
+  var bar = $("memberLockBar"); if (!bar) return;
+  var unlocked = !!state.memberUnlocked;
+  bar.classList.toggle("unlocked", unlocked);
+  $("memberLockStatus").textContent = unlocked ? "メンバー編集は解除中です" : "メンバー編集はロックされています";
+  $("memberLockHint").textContent = unlocked
+    ? "このタブを開いている間は、メンバーの追加・変更・削除ができます。"
+    : "メンバーの追加・名前／出席番号／ポジションの変更・削除にはパスワードが必要です。出席やメモの記録には不要です。";
+  $("memberUnlockBtn").classList.toggle("hidden", unlocked);
+  $("memberRelockBtn").classList.toggle("hidden", !unlocked);
+  if (!unlocked) closeMemberPw();
+  // 追加フォームはロック中は入力不可にする（「追加」ボタンは押せるままで、押すとパスワード入力が開く）
+  ["mNo", "mName", "mPos"].forEach(function(id){
+    var el = $(id); if (el) el.disabled = !unlocked;
+  });
+}
+function openMemberPw(){
+  var form = $("memberPwForm"); if (!form) return;
+  form.classList.remove("hidden");
+  $("memberPwErr").classList.add("hidden");
+  var input = $("memberPwInput"); input.value = "";
+  setTimeout(function(){ input.focus(); }, 30);
+}
+function closeMemberPw(){
+  var form = $("memberPwForm"); if (form) form.classList.add("hidden");
+  var err = $("memberPwErr"); if (err) err.classList.add("hidden");
+  var input = $("memberPwInput"); if (input) input.value = "";
+}
+function requireMemberUnlock(){
+  if (state.memberUnlocked) return true;
+  var det = $("memberDetails"); if (det) det.open = true;
+  openMemberPw();
+  toast("メンバー編集にはパスワードが必要です");
+  return false;
+}
 function memberSort(a, b){
   var na = parseFloat(a.attendance_no), nb = parseFloat(b.attendance_no);
   var aNum = a.attendance_no !== "" && !isNaN(na), bNum = b.attendance_no !== "" && !isNaN(nb);
@@ -1000,7 +1111,11 @@ function renderMembers(){
       '<button class="small danger">削除</button></span>';
     var inputs = row.querySelectorAll("input");
     var btns = row.querySelectorAll("button");
+    if (!state.memberUnlocked) {
+      inputs.forEach(function(inp){ inp.disabled = true; });
+    }
     btns[0].addEventListener("click", function(){
+      if (!requireMemberUnlock()) return;
       sb.from("members").update({
         attendance_no: inputs[0].value.trim(), name: inputs[1].value.trim(), position: inputs[2].value.trim()
       }).eq("id", m.id).then(function(r){
@@ -1009,6 +1124,7 @@ function renderMembers(){
       });
     });
     btns[1].addEventListener("click", function(){
+      if (!requireMemberUnlock()) return;
       var b = this;
       if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "本当に削除？"; return; }
       sb.from("members").delete().eq("id", m.id).then(function(r){
