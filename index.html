@@ -118,8 +118,19 @@
   .seg button + button{border-left:1px solid var(--line)}
 
   /* ---------- standard rows ---------- */
+  .my-progress{margin-top:16px;border:1px solid var(--line);border-radius:var(--radius);padding:12px;background:var(--surface2)}
+  .my-progress-head{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+  .my-progress-title{font-weight:800}
+  .prog-bar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--gray-bg);margin-top:8px}
+  .prog-bar .fill{background:var(--accent);height:100%;transition:width .25s}
+  .prog-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+  .check-btn{width:36px;height:36px;min-height:36px;border-radius:50%;padding:0;font-size:18px;line-height:1;display:inline-flex;align-items:center;justify-content:center;background:var(--surface);color:var(--muted)}
+  .check-btn.on{background:var(--green);border-color:var(--green);color:#fff;font-weight:900}
+  .arow.is-checked{background:var(--green-bg)}
+  .arow.is-next{outline:2px solid var(--accent);outline-offset:1px}
+  .arow.flash{outline:3px solid var(--accent);outline-offset:2px}
   .row-head,.arow{display:grid;gap:8px;align-items:center;
-    grid-template-columns:64px minmax(110px,1.2fr) minmax(100px,1fr) 218px minmax(110px,1fr) minmax(110px,1fr)}
+    grid-template-columns:40px 64px minmax(110px,1.2fr) minmax(100px,1fr) 218px minmax(110px,1fr) minmax(110px,1fr)}
   .row-head{font-size:12px;color:var(--muted);font-weight:700;padding:0 10px 4px}
   .arow{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
     padding:9px 10px;margin-bottom:7px}
@@ -140,8 +151,8 @@
     padding:1px 7px;margin-top:3px;word-break:break-all}
   @media (max-width:760px){
     .row-head{display:none}
-    .arow{grid-template-columns:52px 1fr;grid-template-areas:"no nm" "no pos" "st status" "inj inj" "memo memo"}
-    .arow .no{grid-area:no} .arow .nm{grid-area:nm} .arow .pos{grid-area:pos}
+    .arow{grid-template-columns:40px 52px 1fr;grid-template-areas:"chk no nm" "chk no pos" "st st st" "inj inj inj" "memo memo memo"}
+    .arow .chkcell{grid-area:chk} .arow .no{grid-area:no} .arow .nm{grid-area:nm} .arow .pos{grid-area:pos}
     .arow .stcell{grid-area:st} .arow .injcell{grid-area:inj} .arow .memocell{grid-area:memo}
     .arow .pos:empty{display:none}
   }
@@ -195,6 +206,7 @@
       <label for="password">パスワード</label>
       <input type="password" id="password" autocomplete="current-password" required />
       <button type="submit" class="primary" id="loginBtn">ログイン</button>
+      <p class="muted" style="margin-top:10px">一度ログインすると、この端末ではログイン状態が保持され、次回からは自動でログインします。</p>
       <div class="msg" id="authMsg" role="alert"></div>
     </form>
     <p class="muted" style="margin-top:16px">接続先：Supabase（東京リージョン）／ データはログインした人だけが読み書きできます。</p>
@@ -215,6 +227,7 @@
     </div>
     <button id="logoutBtn" class="small">ログアウト</button>
   </div>
+  <p class="muted" style="margin:-6px 0 14px">ログイン状態はこの端末に保存され、次回からは自動でログインします。共用のPC・タブレットでは、使い終わったら必ずログアウトしてください。</p>
 
   <!-- ホーム：リスト一覧 -->
   <section id="homeView">
@@ -263,6 +276,21 @@
         <div class="sum-bar"><div class="bp" id="barP"></div><div class="ba" id="barA"></div></div>
       </div>
 
+      <div class="my-progress" id="myProgressBox" aria-label="自分の確認進捗">
+        <div class="my-progress-head">
+          <span class="my-progress-title">自分の確認進捗</span>
+          <span id="myProgressText" style="font-weight:800">0/0人（0%）</span>
+        </div>
+        <div class="prog-bar"><div class="fill" id="myProgressBar" style="width:0%"></div></div>
+        <p class="muted" id="nextGuide" style="margin:8px 0 0">各行の ○ をタップすると「自分が確認済み」になります（出席／欠席の共有データとは別に、あなたのアカウントだけに保存されます）。</p>
+        <div class="prog-actions">
+          <button id="nextUncheckedBtn" class="small primary">次の未確認の人へ</button>
+          <button id="resetProgressBtn" class="small">自分の進捗をリセット</button>
+          <span class="muted" id="lastTouchedText"></span>
+        </div>
+        <p class="muted hidden" id="progressStorageNote" style="margin:8px 0 0">この端末に保存中（クラウド保存には追加SQLが必要です）。現在はこの端末・このブラウザ内に、アカウントごとに保存しています。クラウド保存用のテーブル <code>user_progress</code> を作成するSQLは管理者から別途案内されます。</p>
+      </div>
+
       <div class="controls">
         <div class="seg" role="group" aria-label="表示切替">
           <button id="viewStdBtn" class="active">標準リスト</button>
@@ -282,7 +310,7 @@
     </div>
 
     <div id="stdArea">
-      <div class="row-head"><span>出席番号</span><span>名前</span><span>ポジション</span><span>出席状態</span><span>怪我</span><span>メモ</span></div>
+      <div class="row-head"><span>自分確認</span><span>出席番号</span><span>名前</span><span>ポジション</span><span>出席状態</span><span>怪我</span><span>メモ</span></div>
       <div id="stdRows"></div>
       <div id="stdEmpty" class="empty hidden">表示できるメンバーがいません。メンバー管理から登録するか、絞り込みを変えてください。</div>
     </div>
@@ -347,7 +375,12 @@ var state = {
   view: "standard",     // 'standard' | 'simple'
   filter: "all",
   pendingAttReload: false,
-  channel: null
+  channel: null,
+  myChecked: {},        // member_id -> true （本人の確認済みチェック、共有出席とは別）
+  lastMemberId: null,
+  progressMode: null,   // 'cloud' | 'local' | null
+  progressKey: null,
+  highlightId: null
 };
 
 function $(id){ return document.getElementById(id); }
@@ -366,8 +399,30 @@ function errText(e){ if(!e) return "不明なエラー"; return e.message || Str
 
 /* ================= Supabase クライアント（内蔵・fetch直接接続） =================
    外部CDNのライブラリに依存せず、Supabaseの REST / Auth API を直接呼ぶ。
-   セッションはメモリ上のみで保持し、端末には保存しない。 */
+   セッションは localStorage に保存し、再読込・再訪問でもログイン状態を保持する。
+   アクセストークンの期限が近づいたら refresh_token で自動更新する。
+   ログアウト時は保存したセッションを必ず削除する。
+   localStorage が使えない環境（プレビュー等）ではメモリ保持にフォールバックする。 */
 var _session = null;   // { access_token, refresh_token, user, expires_at }
+var SESSION_KEY = "attendance-tool.supabase-session.v1";  // https公開でも file:// でも同じキー
+function _saveSession(){
+  try {
+    if (_session) localStorage.setItem(SESSION_KEY, JSON.stringify(_session));
+    else localStorage.removeItem(SESSION_KEY);
+  } catch (e) { /* 保存できない環境ではメモリ保持のみ */ }
+}
+function _loadSession(){
+  try {
+    var raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return;
+    var s = JSON.parse(raw);
+    if (s && s.access_token && s.refresh_token && s.user) _session = s;
+  } catch (e) { /* 復元できない場合は未ログインとして扱う */ }
+}
+function _clearSession(){
+  _session = null;
+  try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
+}
 var _authCbs = [];
 var lastNetErr = "";   // 直近の通信失敗の詳細（画面に表示して原因を特定できるようにする）
 
@@ -469,6 +524,7 @@ function _refreshSession(){
         user: data.user || _session.user,
         expires_at: Date.now() + (data.expires_in || 3600) * 1000
       };
+      _saveSession();
       return true;
     });
   }).catch(function(){ return false; });
@@ -566,6 +622,7 @@ function createLocalClient(){
               user: data.user,
               expires_at: Date.now() + (data.expires_in || 3600) * 1000
             };
+            _saveSession();
             _fireAuth("SIGNED_IN");
             return { data: { user: data.user, session: _session }, error: null };
           });
@@ -575,7 +632,23 @@ function createLocalClient(){
         });
       },
       getSession: function(){
-        return _ensureToken().then(function(){ return { data: { session: _session }, error: null }; });
+        // 保存済みセッションを復元し、期限が近ければ自動更新してログイン画面をスキップする
+        if (!_session) _loadSession();
+        if (!_session) return Promise.resolve({ data: { session: null }, error: null });
+        if (_session.expires_at && Date.now() <= _session.expires_at - 60000) {
+          return Promise.resolve({ data: { session: _session }, error: null });
+        }
+        // 期限切れ間近／期限切れ：refresh_tokenで更新を試す
+        return _refreshSession().then(function(ok){
+          if (ok) return { data: { session: _session }, error: null };
+          // 更新できてもトークンがまだ有効ならそのまま使う（通信一時失敗など）
+          if (_session && _session.expires_at && Date.now() < _session.expires_at) {
+            return { data: { session: _session }, error: null };
+          }
+          // 更新失敗かつ期限切れ：保存セッションを破棄してログイン画面へ
+          _clearSession();
+          return { data: { session: null }, error: null };
+        });
       },
       onAuthStateChange: function(cb){
         _authCbs.push(cb);
@@ -585,7 +658,7 @@ function createLocalClient(){
       },
       signOut: function(){
         var token = _session && _session.access_token;
-        _session = null;
+        _clearSession();
         _fireAuth("SIGNED_OUT");
         if (token) {
           sbFetch(SUPABASE_URL + "/auth/v1/logout", {
@@ -732,6 +805,29 @@ function bindEvents(){
   $("calPrev").addEventListener("click", function(){ state.calCursor.setMonth(state.calCursor.getMonth()-1); renderCalendar(); loadRecordedForMonth(); });
   $("calNext").addEventListener("click", function(){ state.calCursor.setMonth(state.calCursor.getMonth()+1); renderCalendar(); loadRecordedForMonth(); });
 
+  $("nextUncheckedBtn").addEventListener("click", function(){
+    var nxt = nextUncheckedMember();
+    if (!nxt) { toast("全員確認済みです"); return; }
+    state.highlightId = nxt.id;
+    // 絞り込みで隠れている場合はすべて表示に戻す
+    if (state.filter !== "all") { state.filter = "all"; $("filterSel").value = "all"; }
+    setView("standard");
+    renderAttendance();
+    setTimeout(function(){
+      var el = document.querySelector('[data-mid-row="' + nxt.id + '"]');
+      if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.classList.add("flash"); setTimeout(function(){ el.classList.remove("flash"); }, 1800); }
+    }, 30);
+  });
+  $("resetProgressBtn").addEventListener("click", function(){
+    var b = this;
+    if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "本当にリセット？もう一度タップで確定"; setTimeout(function(){ delete b.dataset.armed; b.textContent = "自分の進捗をリセット"; }, 3000); return; }
+    delete b.dataset.armed; b.textContent = "自分の進捗をリセット";
+    state.myChecked = {}; state.lastMemberId = null; state.highlightId = null;
+    renderAttendance();
+    saveMyProgress();
+    toast("自分の確認進捗をリセットしました（共有の出席データは変わりません）");
+  });
+
   $("viewStdBtn").addEventListener("click", function(){ setView("standard"); });
   $("viewSimpleBtn").addEventListener("click", function(){ setView("simple"); });
   $("filterSel").addEventListener("change", function(){ state.filter = this.value; renderAttendance(); });
@@ -789,7 +885,7 @@ function onSignedIn(user){
 }
 function onSignedOut(){
   state.user = null; state.lists = []; state.currentListId = null;
-  state.members = []; state.att = {};
+  state.members = []; state.att = {}; state.myChecked = {}; state.lastMemberId = null; state.progressMode = null;
   if (state.channel) { clearInterval(state.channel); state.channel = null; }
   $("appView").classList.add("hidden");
   $("authView").classList.remove("hidden");
@@ -865,13 +961,14 @@ function showHome(){
 }
 function openList(id){
   state.currentListId = id;
+  state.myChecked = {}; state.lastMemberId = null; state.highlightId = null;
   var l = state.lists.filter(function(x){ return x.id === id; })[0];
   $("detailTitle").textContent = l ? l.name : "リスト";
   $("homeView").classList.add("hidden");
   $("detailView").classList.remove("hidden");
   state.calCursor = parseDate(state.date);
   syncDateUI();
-  loadMembers().then(function(){ loadAttendance(); loadRecordedForMonth(); });
+  loadMembers().then(function(){ loadAttendance(); loadRecordedForMonth(); loadMyProgress().then(function(){ renderAttendance(); }); });
 }
 
 /* ================= メンバー ================= */
@@ -927,9 +1024,11 @@ function renderMembers(){
 function setDate(s){
   state.date = s;
   state.calCursor = parseDate(s);
+  state.myChecked = {}; state.lastMemberId = null; state.highlightId = null;
   syncDateUI();
   loadAttendance();
   loadRecordedForMonth();
+  loadMyProgress().then(function(){ renderAttendance(); });
 }
 function syncDateUI(){
   $("dateInput").value = state.date;
@@ -994,6 +1093,121 @@ function loadAttendance(){
 }
 function recOf(m){ return state.att[m.id] || { status: "unconfirmed", injury: "", memo: "" }; }
 
+/* ================= 自分の確認進捗（アカウント別・共有出席とは別） ================= */
+function progressLocalKey(){ return "attendance-tool.progress." + (state.user ? state.user.id : "anon"); }
+function progressSlotKey(){ return state.currentListId + "|" + state.date; }
+function progressLocalReadAll(){
+  try { var raw = localStorage.getItem(progressLocalKey()); return raw ? JSON.parse(raw) : {}; } catch(e){ return {}; }
+}
+function progressLocalWrite(slot){
+  try {
+    var all = progressLocalReadAll();
+    all[progressSlotKey()] = slot;
+    localStorage.setItem(progressLocalKey(), JSON.stringify(all));
+  } catch(e){}
+}
+function setProgressMode(mode){
+  state.progressMode = mode;
+  var note = $("progressStorageNote");
+  if (note) note.classList.toggle("hidden", mode !== "local");
+}
+function applyProgress(checkedIds, lastId){
+  state.myChecked = {};
+  (checkedIds || []).forEach(function(id){ state.myChecked[id] = true; });
+  state.lastMemberId = lastId || null;
+  renderMyProgress();
+}
+function loadMyProgress(){
+  if (!state.currentListId || !state.user) { applyProgress([], null); return Promise.resolve(); }
+  // まずクラウド（user_progress）を試す。テーブル未作成などのエラー時は端末保存へフォールバック
+  return sb.from("user_progress").select("*")
+    .eq("user_id", state.user.id).eq("list_id", state.currentListId).eq("date", state.date)
+    .then(function(res){
+      if (res.error) {
+        setProgressMode("local");
+        var all = progressLocalReadAll();
+        var slot = all[progressSlotKey()] || {};
+        applyProgress(slot.checked_ids || [], slot.last_member_id || null);
+        return;
+      }
+      setProgressMode("cloud");
+      var row = (res.data || [])[0];
+      if (row) applyProgress(row.checked_ids || [], row.last_member_id || null);
+      else applyProgress([], null);
+    }).catch(function(){
+      setProgressMode("local");
+      var all = progressLocalReadAll();
+      var slot = all[progressSlotKey()] || {};
+      applyProgress(slot.checked_ids || [], slot.last_member_id || null);
+    });
+}
+var progressSaveTimer = null;
+function saveMyProgress(){
+  if (!state.currentListId || !state.user) return Promise.resolve();
+  var checkedIds = Object.keys(state.myChecked).filter(function(k){ return state.myChecked[k]; });
+  var slot = { checked_ids: checkedIds, last_member_id: state.lastMemberId };
+  if (state.progressMode === "local") {
+    progressLocalWrite(slot);
+    renderMyProgress();
+    return Promise.resolve();
+  }
+  var row = {
+    user_id: state.user.id, list_id: state.currentListId, date: state.date,
+    checked_ids: checkedIds, last_member_id: state.lastMemberId,
+    updated_at: new Date().toISOString()
+  };
+  return sb.from("user_progress").upsert(row, { onConflict: "user_id,list_id,date" }).then(function(res){
+    if (res.error) {
+      // テーブルが無い等でクラウド保存できない場合は端末保存へ切り替える
+      setProgressMode("local");
+      progressLocalWrite(slot);
+    } else {
+      setProgressMode("cloud");
+    }
+    renderMyProgress();
+  });
+}
+function scheduleSaveProgress(){
+  clearTimeout(progressSaveTimer);
+  progressSaveTimer = setTimeout(saveMyProgress, 250);
+}
+function toggleMyCheck(memberId){
+  if (state.myChecked[memberId]) delete state.myChecked[memberId];
+  else state.myChecked[memberId] = true;
+  state.lastMemberId = memberId;
+  renderAttendance();
+  scheduleSaveProgress();
+}
+function nextUncheckedMember(){
+  for (var i = 0; i < state.members.length; i++) {
+    if (!state.myChecked[state.members[i].id]) return state.members[i];
+  }
+  return null;
+}
+function renderMyProgress(){
+  var total = state.members.length;
+  var done = state.members.filter(function(m){ return state.myChecked[m.id]; }).length;
+  var pct = total ? Math.round(done / total * 100) : 0;
+  var txt = $("myProgressText"); if (txt) txt.textContent = done + "/" + total + "人（" + pct + "%）";
+  var bar = $("myProgressBar"); if (bar) bar.style.width = pct + "%";
+  var guide = $("nextGuide");
+  if (guide) {
+    if (!total) guide.textContent = "メンバーが登録されると、ここに進捗が表示されます。";
+    else if (done >= total) guide.textContent = "全員確認済みです。お疲れさまでした。";
+    else {
+      var nxt = nextUncheckedMember();
+      guide.textContent = nxt ? ("次に未確認： " + (nxt.attendance_no ? nxt.attendance_no + " " : "") + nxt.name + " さん") : "";
+    }
+  }
+  var lastEl = $("lastTouchedText");
+  if (lastEl) {
+    var lm = state.members.filter(function(m){ return m.id === state.lastMemberId; })[0];
+    lastEl.textContent = lm ? ("最後に触った人： " + (lm.attendance_no ? lm.attendance_no + " " : "") + lm.name) : "";
+  }
+  var btn = $("nextUncheckedBtn");
+  if (btn) btn.disabled = !nextUncheckedMember();
+}
+
 function saveAttendance(memberId, patch){
   var cur = state.att[memberId] || {};
   var row = {
@@ -1006,6 +1220,8 @@ function saveAttendance(memberId, patch){
   // 楽観的に手元へ反映
   state.att[memberId] = Object.assign({}, cur, row);
   state.recordedDates[state.date] = true;
+  // 作業途中の「最後に触った人」として自分の進捗にも記録する（チェック状態自体は変えない）
+  if (state.lastMemberId !== memberId) { state.lastMemberId = memberId; scheduleSaveProgress(); renderMyProgress(); }
   return sb.from("attendance").upsert(row, { onConflict: "member_id,date" }).then(function(res){
     if (res.error) { toast("保存に失敗：" + errText(res.error)); loadAttendance(); }
   });
@@ -1044,6 +1260,7 @@ function renderAttendance(){
   var list = filteredMembers();
   renderStandard(list);
   renderSimple(list);
+  renderMyProgress();
 }
 
 function statusSeg(m, r){
@@ -1088,8 +1305,20 @@ function renderStandard(list){
   $("stdEmpty").classList.toggle("hidden", list.length > 0);
   list.forEach(function(m){
     var r = recOf(m);
+    var isChecked = !!state.myChecked[m.id];
+    var nxt = nextUncheckedMember();
     var row = document.createElement("div");
-    row.className = "arow" + (r.injury && r.injury.trim() ? " has-injury" : "");
+    row.className = "arow" + (r.injury && r.injury.trim() ? " has-injury" : "") + (isChecked ? " is-checked" : "") + (nxt && nxt.id === m.id ? " is-next" : "");
+    row.setAttribute("data-mid-row", m.id);
+    var chk = document.createElement("div"); chk.className = "chkcell";
+    var chkBtn = document.createElement("button");
+    chkBtn.type = "button"; chkBtn.className = "check-btn" + (isChecked ? " on" : "");
+    chkBtn.textContent = isChecked ? "✓" : "○";
+    chkBtn.setAttribute("aria-pressed", isChecked ? "true" : "false");
+    chkBtn.setAttribute("aria-label", m.name + " を自分確認済みにする");
+    chkBtn.title = isChecked ? "自分は確認済み（タップで戻す）" : "自分が確認したらタップ";
+    (function(mid){ chkBtn.addEventListener("click", function(){ toggleMyCheck(mid); }); })(m.id);
+    chk.appendChild(chkBtn);
     var no = document.createElement("div"); no.className = "no"; no.textContent = m.attendance_no || "—";
     var nm = document.createElement("div"); nm.className = "nm";
     nm.innerHTML = esc(m.name) + (r.injury && r.injury.trim() ? '<br><span class="inj-tag">⚠ 怪我：' + esc(r.injury) + '</span>' : "");
@@ -1097,7 +1326,8 @@ function renderStandard(list){
     var st = document.createElement("div"); st.className = "stcell"; st.appendChild(statusSeg(m, r));
     var inj = document.createElement("div"); inj.className = "injcell"; inj.appendChild(textField(m, "injury", "怪我（なければ空欄）", r.injury));
     var memo = document.createElement("div"); memo.className = "memocell"; memo.appendChild(textField(m, "memo", "メモ", r.memo));
-    row.appendChild(no); row.appendChild(nm); row.appendChild(pos);
+    if (isChecked) { nm.innerHTML += ' <span class="muted" style="font-size:12px;font-weight:700">✓ 自分確認済み</span>'; }
+    row.appendChild(chk); row.appendChild(no); row.appendChild(nm); row.appendChild(pos);
     row.appendChild(st); row.appendChild(inj); row.appendChild(memo);
     box.appendChild(row);
   });
