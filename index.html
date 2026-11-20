@@ -72,6 +72,7 @@
   .conn .dot{width:9px;height:9px;border-radius:50%;background:var(--gray-text)}
   .conn.on .dot{background:var(--green)}
   .conn.off .dot{background:var(--red)}
+  .admin-badge{display:inline-flex;align-items:center;background:var(--accent);color:var(--accent-text);font-size:11px;font-weight:800;border-radius:999px;padding:2px 9px;letter-spacing:.02em;white-space:nowrap}
 
   /* ---------- lists home ---------- */
   .list-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
@@ -246,6 +247,7 @@
   <div class="topbar">
     <div class="who">
       <span id="userEmail"></span>
+      <span id="adminBadge" class="admin-badge hidden">管理者</span>
       <span class="conn" id="connBadge"><span class="dot"></span><span id="connText">接続中…</span></span>
     </div>
     <button id="logoutBtn" class="small">ログアウト</button>
@@ -262,7 +264,7 @@
     </div>
     <div class="card">
       <h3>新しいリストを作成</h3>
-      <p class="muted" style="margin:0 0 12px">リストの作成・名前変更・削除、その日の出席リセット、全データ書き出しは管理者のみです（共通の管理者ロック）。</p>
+      <p class="muted" style="margin:0 0 12px">リストの作成・名前変更・削除、その日の出席リセット、全データ書き出しは管理者アカウントのみです（アカウント確認＋管理者パスワードの二重チェック）。管理者アカウントでない場合は操作できません。</p>
       <div class="member-lock" id="adminLockBar">
         <div class="member-lock-main">
           <span class="lock-chip"><span class="dot"></span><span id="adminLockStatus">リスト作成はロックされています</span></span>
@@ -286,7 +288,7 @@
       </form>
       <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px">
         <h3>全データ一括書き出し（バックアップ）</h3>
-        <p class="muted" style="margin:0 0 10px">全リスト・全メンバー・全期間の出席記録をJSONファイルでダウンロードします。管理者ロックの解除が必要です。</p>
+        <p class="muted" style="margin:0 0 10px">全リスト・全メンバー・全期間の出席記録をJSONファイルでダウンロードします。管理者アカウントでのログインと管理者ロックの解除が必要です。</p>
         <button type="button" id="exportAllBtn">全データを書き出す（JSON）</button>
         <span class="muted" id="exportAllStatus" style="margin-left:8px"></span>
       </div>
@@ -475,6 +477,16 @@ var state = {
   historyAvailable: null // null=未確認 / true=利用可 / false=テーブル未作成などで利用不可
 };
 
+/* 管理者アカウント判定：メール一致（大文字小文字不問）または app_metadata.role === 'admin' */
+var ADMIN_EMAIL = "hnd747jal@gmail.com";
+function isAdminAccount(){
+  if (!state.user) return false;
+  var email = state.user.email ? String(state.user.email).trim().toLowerCase() : "";
+  if (email && email === ADMIN_EMAIL) return true;
+  var am = state.user.app_metadata || {};
+  if (am.role === "admin") return true;
+  return false;
+}
 /* ログイン中ユーザーの表示名（user_metadata.display_name）。無ければ空文字 */
 function myDisplayName(){
   if (!state.user) return "";
@@ -995,16 +1007,22 @@ function bindEvents(){
   $("memberPwCancel").addEventListener("click", function(){ closeMemberPw(); });
   $("memberPwForm").addEventListener("submit", function(ev){
     ev.preventDefault();
-    if ($("memberPwInput").value === MEMBER_EDIT_PASSWORD) {
-      setMemberUnlocked(true);
-      closeMemberPw();
-      toast("メンバー編集のロックを解除しました");
-      var n = $("mName"); if (n) n.focus();
-    } else {
-      $("memberPwErr").classList.remove("hidden");
-      $("memberPwInput").value = "";
-      $("memberPwInput").focus();
-    }
+    var input = $("memberPwInput");
+    var btn = this.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
+    sha256Hex(input.value).then(function(hash){
+      if (btn) btn.disabled = false;
+      if (hash && hash === MEMBER_PW_HASH) {
+        setMemberUnlocked(true);
+        closeMemberPw();
+        toast("メンバー編集のロックを解除しました");
+        var n = $("mName"); if (n) n.focus();
+      } else {
+        $("memberPwErr").classList.remove("hidden");
+        input.value = "";
+        input.focus();
+      }
+    });
   });
 
   $("adminUnlockBtn").addEventListener("click", function(){ openAdminPw(); });
@@ -1065,12 +1083,16 @@ function onSignedIn(user){
   $("appView").classList.remove("hidden");
   var dn = myDisplayName();
   $("userEmail").textContent = "ログイン中：" + (dn || user.email || "");
+  var badge = $("adminBadge");
+  if (badge) badge.classList.toggle("hidden", !isAdminAccount());
   setConn(true);
   subscribeRealtime();
   showHome();
   loadLists();
 }
 function onSignedOut(){
+  var badgeOut = $("adminBadge");
+  if (badgeOut) badgeOut.classList.add("hidden");
   // ログアウトしたらメンバー編集・リスト作成は再ロックする
   state.memberUnlocked = false;
   try { sessionStorage.removeItem(MEMBER_UNLOCK_KEY); } catch (e) {}
@@ -1172,8 +1194,9 @@ function openList(id){
 /* ================= メンバー ================= */
 /* メンバー編集ロック：誤操作・いたずら防止のための簡易ロック。
    対象はメンバーの追加・変更・削除のみ（出席／欠席・怪我・メモ・自分確認は対象外）。
+   パスワードは平文で保持せず、SHA-256ハッシュと照合する（管理者ロックと同方式）。
    解除状態はこのブラウザタブのセッション中だけ保持し、ログアウトで再ロックする。 */
-var MEMBER_EDIT_PASSWORD = "white";
+var MEMBER_PW_HASH = "018fa96a44715c90bf93be148069cb28dd45d398f2cc75aa1565311f6e55d174";
 var MEMBER_UNLOCK_KEY = "attendance-tool.member-unlocked.v1";
 function restoreMemberUnlock(){
   try { state.memberUnlocked = sessionStorage.getItem(MEMBER_UNLOCK_KEY) === "1"; }
@@ -1223,8 +1246,11 @@ function requireMemberUnlock(){
   toast("メンバー編集にはパスワードが必要です");
   return false;
 }
-/* ================= 管理者ロック =================
+/* ================= 管理者ロック（アカウント紐付け＋パスワードの二重チェック） =================
    対象は「新しいリストを作成」「リストの名前変更・削除」「その日の出席リセット」「全データ一括書き出し」。
+   管理者アカウント（メールが ADMIN_EMAIL と一致、または app_metadata.role === 'admin'）でない場合は
+   パスワード入力を開かず「管理者アカウントでのみ操作できます」と表示して実行不可にする。
+   管理者アカウントの場合も従来どおり管理者パスワードによる解除が必要。
    既存リストの閲覧・切替、出席の記録は対象外。解除状態は新規リスト作成と共通（1回の解除で全対象が開く）。
    パスワードは平文で保持せず、SHA-256ハッシュと照合する（誤操作・いたずら防止の画面ロック）。
    解除状態はこのブラウザタブのセッション中だけ保持し、ログアウトで再ロックする。 */
@@ -1243,10 +1269,16 @@ function sha256Hex(text){
   } catch (e) { return Promise.resolve(null); }
 }
 function restoreAdminUnlock(){
+  if (!isAdminAccount()) {
+    state.adminUnlocked = false;
+    try { sessionStorage.removeItem(ADMIN_UNLOCK_KEY); } catch (e) {}
+    return;
+  }
   try { state.adminUnlocked = sessionStorage.getItem(ADMIN_UNLOCK_KEY) === "1"; }
   catch (e) { state.adminUnlocked = false; }
 }
 function setAdminUnlocked(v){
+  if (v && !isAdminAccount()) v = false;
   state.adminUnlocked = !!v;
   try {
     if (v) sessionStorage.setItem(ADMIN_UNLOCK_KEY, "1");
@@ -1256,12 +1288,30 @@ function setAdminUnlocked(v){
 }
 function renderAdminLock(){
   var bar = $("adminLockBar"); if (!bar) return;
-  var unlocked = !!state.adminUnlocked;
+  var isAdmin = isAdminAccount();
+  var unlocked = !!state.adminUnlocked && isAdmin;
   bar.classList.toggle("unlocked", unlocked);
+  var badge2 = $("adminBadge");
+  if (badge2) badge2.classList.toggle("hidden", !isAdmin);
+  if (!isAdmin) {
+    $("adminLockStatus").textContent = "管理者アカウントでのみ操作できます";
+    $("adminLockHint").textContent = "現在のログインアカウントは管理者ではありません。リストの作成・名前変更・削除、その日のリセット、全データ書き出しは管理者アカウントでログインした場合のみ可能です。既存リストの閲覧・切替はそのままできます。";
+    $("adminUnlockBtn").classList.add("hidden");
+    $("adminRelockBtn").classList.add("hidden");
+    closeAdminPw();
+    var nameInputNA = $("newListName");
+    if (nameInputNA) nameInputNA.disabled = true;
+    var formNA = $("newListForm");
+    if (formNA) {
+      var submitBtnNA = formNA.querySelector('button[type="submit"]');
+      if (submitBtnNA) submitBtnNA.disabled = false;
+    }
+    return;
+  }
   $("adminLockStatus").textContent = unlocked ? "管理者操作は解除中です" : "管理者操作はロックされています";
   $("adminLockHint").textContent = unlocked
     ? "このタブを開いている間は、リストの作成・名前変更・削除、その日のリセット、全データ書き出しができます。"
-    : "リストの作成・名前変更・削除、その日のリセット、全データ書き出しには管理者パスワードが必要です。既存リストの閲覧・切替はそのままできます。";
+    : "管理者アカウントでログイン中です。リストの作成・名前変更・削除、その日のリセット、全データ書き出しには管理者パスワードが必要です。既存リストの閲覧・切替はそのままできます。";
   $("adminUnlockBtn").classList.toggle("hidden", unlocked);
   $("adminRelockBtn").classList.toggle("hidden", !unlocked);
   if (!unlocked) closeAdminPw();
@@ -1274,6 +1324,7 @@ function renderAdminLock(){
   }
 }
 function openAdminPw(){
+  if (!isAdminAccount()) { toast("管理者アカウントでのみ操作できます"); return; }
   // 詳細画面を開いている間は詳細側の入力欄を、それ以外はホーム側の入力欄を開く
   var detail = $("detailView");
   var inDetail = detail && !detail.classList.contains("hidden");
@@ -1293,6 +1344,7 @@ function closeAdminPw(){
   });
 }
 function tryAdminUnlock(pwValue, errEl, inputEl){
+  if (!isAdminAccount()) { toast("管理者アカウントでのみ操作できます"); return Promise.resolve(false); }
   return sha256Hex(pwValue).then(function(hash){
     if (hash && hash === ADMIN_PW_HASH) {
       setAdminUnlocked(true);
@@ -1305,6 +1357,7 @@ function tryAdminUnlock(pwValue, errEl, inputEl){
   });
 }
 function requireAdminUnlock(){
+  if (!isAdminAccount()) { toast("管理者アカウントでのみ操作できます"); return false; }
   if (state.adminUnlocked) return true;
   openAdminPw();
   toast("この操作には管理者パスワードが必要です");
