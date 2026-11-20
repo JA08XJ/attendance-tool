@@ -192,10 +192,23 @@
   .add-member{display:grid;gap:8px;grid-template-columns:70px 1fr 1fr auto;margin-bottom:12px}
   @media (max-width:640px){ .add-member{grid-template-columns:60px 1fr} }
   .empty{padding:26px 10px;text-align:center;color:var(--muted)}
+  .back-to-top{position:fixed;right:16px;bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:60;
+    width:56px;height:56px;min-height:56px;border-radius:50%;padding:0;
+    background:var(--accent);border-color:var(--accent);color:var(--accent-text);
+    box-shadow:0 4px 14px rgba(20,30,18,.28);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;
+    font-size:11px;font-weight:800;line-height:1.1}
+  .back-to-top .arr{font-size:20px;line-height:1;font-weight:900}
+  .back-to-top:hover{border-color:var(--accent);filter:brightness(1.07)}
+  .back-to-top.hidden{display:none !important}
+  @media (max-width:480px){ .back-to-top{right:12px;width:54px;height:54px;min-height:54px} }
   .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(20px);
     background:var(--text);color:var(--bg);padding:10px 18px;border-radius:999px;font-size:14px;
     opacity:0;pointer-events:none;transition:.25s;z-index:50;max-width:92vw;text-align:center}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .history-item{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-top:7px;background:var(--surface);font-size:14px}
+  .history-item .htime{color:var(--muted);font-size:12px;font-weight:700}
+  .history-item .hchange{font-weight:700;word-break:break-all}
+  .history-item .hby{color:var(--muted);font-size:12px}
   .backrow{margin-bottom:10px}
   .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);
     border-top-color:var(--accent);border-radius:50%;animation:sp 0.8s linear infinite;vertical-align:-2px}
@@ -249,10 +262,34 @@
     </div>
     <div class="card">
       <h3>新しいリストを作成</h3>
+      <p class="muted" style="margin:0 0 12px">リストの作成・名前変更・削除、その日の出席リセット、全データ書き出しは管理者のみです（共通の管理者ロック）。</p>
+      <div class="member-lock" id="adminLockBar">
+        <div class="member-lock-main">
+          <span class="lock-chip"><span class="dot"></span><span id="adminLockStatus">リスト作成はロックされています</span></span>
+          <span class="muted" id="adminLockHint">管理者操作には管理者パスワードが必要です。既存リストの閲覧・切替はそのままできます。</span>
+        </div>
+        <button type="button" id="adminUnlockBtn" class="small primary">管理者ロックを解除する</button>
+        <button type="button" id="adminRelockBtn" class="small hidden">ロックし直す</button>
+      </div>
+      <form class="member-pw hidden" id="adminPwForm">
+        <label for="adminPwInput">管理者パスワード</label>
+        <div class="member-pw-row">
+          <input type="password" id="adminPwInput" autocomplete="off" placeholder="パスワードを入力" />
+          <button type="submit" class="primary small">解除する</button>
+          <button type="button" id="adminPwCancel" class="small">キャンセル</button>
+        </div>
+        <p class="member-pw-err hidden" id="adminPwErr" role="alert">パスワードが違います。管理者ロックは解除されませんでした。</p>
+      </form>
       <form class="new-list" id="newListForm">
         <input type="text" id="newListName" placeholder="リスト名（例：白組 全体、白組 守備）" required maxlength="60" />
         <button type="submit" class="primary">作成する</button>
       </form>
+      <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px">
+        <h3>全データ一括書き出し（バックアップ）</h3>
+        <p class="muted" style="margin:0 0 10px">全リスト・全メンバー・全期間の出席記録をJSONファイルでダウンロードします。管理者ロックの解除が必要です。</p>
+        <button type="button" id="exportAllBtn">全データを書き出す（JSON）</button>
+        <span class="muted" id="exportAllStatus" style="margin-left:8px"></span>
+      </div>
     </div>
   </section>
 
@@ -288,7 +325,7 @@
 
       <div class="my-progress" id="myProgressBox" aria-label="自分の確認進捗">
         <div class="my-progress-head">
-          <span class="my-progress-title">自分の確認進捗</span>
+          <span class="my-progress-title" id="myProgressTitle">自分の確認進捗</span>
           <span id="myProgressText" style="font-weight:800">0/0人（0%）</span>
         </div>
         <div class="prog-bar"><div class="fill" id="myProgressBar" style="width:0%"></div></div>
@@ -313,9 +350,31 @@
           <option value="unconfirmed">未確認のみ</option>
           <option value="injury">怪我ありのみ</option>
         </select>
-        <button id="allPresentBtn">全員出席にする</button>
         <button id="resetDayBtn">この日をリセット</button>
         <button id="csvBtn">CSV書き出し</button>
+      </div>
+
+      <form class="member-pw hidden" id="adminPwFormDetail" style="margin-top:12px">
+        <label for="adminPwInputDetail">管理者パスワード（この操作には管理者ロックの解除が必要です）</label>
+        <div class="member-pw-row">
+          <input type="password" id="adminPwInputDetail" autocomplete="off" placeholder="パスワードを入力" />
+          <button type="submit" class="primary small">解除する</button>
+          <button type="button" id="adminPwCancelDetail" class="small">キャンセル</button>
+        </div>
+        <p class="member-pw-err hidden" id="adminPwErrDetail" role="alert">パスワードが違います。管理者ロックは解除されませんでした。</p>
+      </form>
+
+      <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+        <button id="historyToggleBtn" class="small" aria-expanded="false">変更履歴を見る</button>
+        <div id="historyBox" class="hidden" style="margin-top:10px">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <strong>この日の変更履歴</strong>
+            <button id="historyReloadBtn" class="small">再読み込み</button>
+            <span class="muted" id="historyStatus"></span>
+          </div>
+          <p class="muted hidden" id="historySqlNote" style="margin-top:8px">履歴には追加SQLが必要です。管理者から案内されるSQL（attendance_history テーブルの作成）をSupabaseで実行すると、ここに履歴が表示されます。それまでの間も、出席の保存は通常通りできます。</p>
+          <div id="historyList"></div>
+        </div>
       </div>
     </div>
 
@@ -381,6 +440,8 @@
   </section>
 </div>
 
+<button type="button" id="backToTopBtn" class="back-to-top hidden" aria-label="最上部へ移動"><span class="arr" aria-hidden="true">↑</span><span>トップへ</span></button>
+
 <div class="toast" id="toast" role="status"></div>
 
 <script>
@@ -408,8 +469,25 @@ var state = {
   progressMode: null,   // 'cloud' | 'local' | null
   progressKey: null,
   highlightId: null,
-  memberUnlocked: false // メンバー編集ロック（このタブのセッション中のみ保持）
+  memberUnlocked: false, // メンバー編集ロック（このタブのセッション中のみ保持）
+  adminUnlocked: false, // 管理者ロック（リスト作成・変更・削除／その日のリセット／一括書き出し。このタブのセッション中のみ保持）
+  historyOpen: false,
+  historyAvailable: null // null=未確認 / true=利用可 / false=テーブル未作成などで利用不可
 };
+
+/* ログイン中ユーザーの表示名（user_metadata.display_name）。無ければ空文字 */
+function myDisplayName(){
+  if (!state.user) return "";
+  var md = state.user.user_metadata || {};
+  var dn = md.display_name != null ? String(md.display_name).trim() : "";
+  return dn;
+}
+/* 表示名があれば表示名、無ければメールアドレス（履歴の変更者名も同基準） */
+function myLabel(){
+  var dn = myDisplayName();
+  if (dn) return dn;
+  return state.user ? (state.user.email || "") : "";
+}
 
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
@@ -577,6 +655,7 @@ function _execQB(qb){
       params.set("select", qb.cols);
       if (qb.ord) params.set("order", qb.ord);
       if (qb.lim != null) params.set("limit", qb.lim);
+      if (qb.off != null) params.set("offset", qb.off);
       opts.method = "GET";
       delete opts.headers["Content-Type"];
     } else if (qb.op === "insert") {
@@ -612,7 +691,7 @@ function _execQB(qb){
 }
 
 function QB(table){
-  this.table = table; this.filters = []; this.ord = null; this.lim = null;
+  this.table = table; this.filters = []; this.ord = null; this.lim = null; this.off = null;
   this.cols = "*"; this.op = "select"; this.payload = null; this.conflict = null; this._p = null;
 }
 QB.prototype.select = function(cols){ this.op = "select"; this.cols = cols || "*"; return this; };
@@ -625,6 +704,7 @@ QB.prototype.gte = function(c, v){ this.filters.push([c, "gte", v]); return this
 QB.prototype.lte = function(c, v){ this.filters.push([c, "lte", v]); return this; };
 QB.prototype.order = function(c, o){ this.ord = c + ((o && o.ascending === false) ? ".desc" : ".asc"); return this; };
 QB.prototype.limit = function(n){ this.lim = n; return this; };
+QB.prototype.offset = function(n){ this.off = n; return this; };
 QB.prototype.then = function(onF, onR){
   if (!this._p) this._p = _execQB(this);
   return this._p.then(onF, onR);
@@ -738,6 +818,8 @@ function init(){
   sb = createLocalClient();
   restoreMemberUnlock();
   renderMemberLock();
+  restoreAdminUnlock();
+  renderAdminLock();
 
   $("healthLink").href = SUPABASE_URL + "/auth/v1/health?apikey=" + SUPABASE_KEY;
   var hint = "";
@@ -812,6 +894,7 @@ function bindEvents(){
 
   $("newListForm").addEventListener("submit", function(ev){
     ev.preventDefault();
+    if (!requireAdminUnlock()) return;
     var name = $("newListName").value.trim(); if (!name) return;
     sb.from("lists").insert({ name: name }).then(function(res){
       if (res.error) { toast("作成に失敗：" + errText(res.error)); return; }
@@ -862,29 +945,47 @@ function bindEvents(){
   $("viewSimpleBtn").addEventListener("click", function(){ setView("simple"); });
   $("filterSel").addEventListener("change", function(){ state.filter = this.value; renderAttendance(); });
 
-  $("allPresentBtn").addEventListener("click", function(){
-    if (!state.members.length) return;
-    var rows = state.members.map(function(m){
-      var cur = state.att[m.id] || {};
-      return { list_id: state.currentListId, member_id: m.id, date: state.date,
-        status: "present", injury: cur.injury || "", memo: cur.memo || "", updated_by: state.user.id };
-    });
-    sb.from("attendance").upsert(rows, { onConflict: "member_id,date" }).then(function(res){
-      if (res.error) { toast("保存に失敗：" + errText(res.error)); return; }
-      toast("全員を出席にしました"); loadAttendance();
-    });
-  });
-
   $("resetDayBtn").addEventListener("click", function(){
     if (!state.currentListId) return;
+    if (!requireAdminUnlock()) return;
+    var snapshot = state.att;
     sb.from("attendance").delete().eq("list_id", state.currentListId).eq("date", state.date)
       .then(function(res){
         if (res.error) { toast("リセットに失敗：" + errText(res.error)); return; }
+        // リセットで消えた変更も履歴に残す
+        Object.keys(snapshot).forEach(function(mid){
+          var r = snapshot[mid] || {};
+          logHistory(mid, "status", r.status || "unconfirmed", "unconfirmed");
+          logHistory(mid, "injury", r.injury || "", "");
+          logHistory(mid, "memo", r.memo || "", "");
+        });
         toast("この日の記録をリセットしました"); loadAttendance();
       });
   });
 
   $("csvBtn").addEventListener("click", exportCsv);
+  $("exportAllBtn").addEventListener("click", exportAllData);
+
+  $("historyToggleBtn").addEventListener("click", function(){
+    state.historyOpen = !state.historyOpen;
+    $("historyBox").classList.toggle("hidden", !state.historyOpen);
+    this.setAttribute("aria-expanded", state.historyOpen ? "true" : "false");
+    this.textContent = state.historyOpen ? "変更履歴を閉じる" : "変更履歴を見る";
+    if (state.historyOpen) loadHistory();
+  });
+  $("historyReloadBtn").addEventListener("click", function(){ loadHistory(); });
+
+  $("adminPwCancelDetail").addEventListener("click", function(){ closeAdminPw(); });
+  $("adminPwFormDetail").addEventListener("submit", function(ev){
+    ev.preventDefault();
+    var input = $("adminPwInputDetail");
+    var btn = this.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
+    tryAdminUnlock(input.value, $("adminPwErrDetail"), input).then(function(ok){
+      if (btn) btn.disabled = false;
+      if (ok) toast("管理者ロックを解除しました。もう一度操作してください");
+    });
+  });
 
   $("memberUnlockBtn").addEventListener("click", function(){ openMemberPw(); });
   $("memberRelockBtn").addEventListener("click", function(){
@@ -905,6 +1006,35 @@ function bindEvents(){
       $("memberPwInput").focus();
     }
   });
+
+  $("adminUnlockBtn").addEventListener("click", function(){ openAdminPw(); });
+  $("adminRelockBtn").addEventListener("click", function(){
+    setAdminUnlocked(false);
+    toast("管理者操作をロックしました");
+  });
+  $("adminPwCancel").addEventListener("click", function(){ closeAdminPw(); });
+  $("adminPwForm").addEventListener("submit", function(ev){
+    ev.preventDefault();
+    var input = $("adminPwInput");
+    var btn = this.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
+    tryAdminUnlock(input.value, $("adminPwErr"), input).then(function(ok){
+      if (btn) btn.disabled = false;
+      if (ok) {
+        toast("管理者ロックを解除しました");
+        var n = $("newListName"); if (n) n.focus();
+      }
+    });
+  });
+
+  $("backToTopBtn").addEventListener("click", function(){
+    var reduce = false;
+    try { reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+    window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+  });
+  window.addEventListener("scroll", updateBackToTop, { passive: true });
+  window.addEventListener("resize", updateBackToTop);
+  updateBackToTop();
 
   $("addMemberForm").addEventListener("submit", function(ev){
     ev.preventDefault();
@@ -928,19 +1058,27 @@ function onSignedIn(user){
   state.user = user;
   restoreMemberUnlock();
   renderMemberLock();
+  restoreAdminUnlock();
+  renderAdminLock();
+  updateBackToTop();
   $("authView").classList.add("hidden");
   $("appView").classList.remove("hidden");
-  $("userEmail").textContent = "ログイン中：" + (user.email || "");
+  var dn = myDisplayName();
+  $("userEmail").textContent = "ログイン中：" + (dn || user.email || "");
   setConn(true);
   subscribeRealtime();
   showHome();
   loadLists();
 }
 function onSignedOut(){
-  // ログアウトしたらメンバー編集は再ロックする
+  // ログアウトしたらメンバー編集・リスト作成は再ロックする
   state.memberUnlocked = false;
   try { sessionStorage.removeItem(MEMBER_UNLOCK_KEY); } catch (e) {}
   renderMemberLock();
+  state.adminUnlocked = false;
+  try { sessionStorage.removeItem(ADMIN_UNLOCK_KEY); } catch (e) {}
+  renderAdminLock();
+  updateBackToTop();
   state.user = null; state.lists = []; state.currentListId = null;
   state.members = []; state.att = {}; state.myChecked = {}; state.lastMemberId = null; state.progressMode = null;
   if (state.channel) { clearInterval(state.channel); state.channel = null; }
@@ -983,6 +1121,7 @@ function renderLists(){
         '</div>';
       card.querySelector('[data-act="open"]').addEventListener("click", function(){ openList(l.id); });
       card.querySelector('[data-act="rename"]').addEventListener("click", function(){
+        if (!requireAdminUnlock()) return;
         var wrap = document.createElement("div");
         wrap.innerHTML = '<input type="text" maxlength="60" value="' + esc(l.name) + '" aria-label="新しいリスト名" />' +
           '<div style="display:flex;gap:6px;margin-top:6px"><button class="primary small">保存</button><button class="small">キャンセル</button></div>';
@@ -998,6 +1137,7 @@ function renderLists(){
         wrap.querySelectorAll("button")[1].addEventListener("click", renderLists);
       });
       card.querySelector('[data-act="del"]').addEventListener("click", function(){
+        if (!requireAdminUnlock()) return;
         var b = this;
         if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "本当に削除？もう一度タップで確定"; return; }
         sb.from("lists").delete().eq("id", l.id).then(function(r){
@@ -1026,7 +1166,7 @@ function openList(id){
   renderMemberLock();
   state.calCursor = parseDate(state.date);
   syncDateUI();
-  loadMembers().then(function(){ loadAttendance(); loadRecordedForMonth(); loadMyProgress().then(function(){ renderAttendance(); }); });
+  loadMembers().then(function(){ loadAttendance(); loadRecordedForMonth(); loadMyProgress().then(function(){ renderAttendance(); }); if (state.historyOpen) loadHistory(); });
 }
 
 /* ================= メンバー ================= */
@@ -1082,6 +1222,100 @@ function requireMemberUnlock(){
   openMemberPw();
   toast("メンバー編集にはパスワードが必要です");
   return false;
+}
+/* ================= 管理者ロック =================
+   対象は「新しいリストを作成」「リストの名前変更・削除」「その日の出席リセット」「全データ一括書き出し」。
+   既存リストの閲覧・切替、出席の記録は対象外。解除状態は新規リスト作成と共通（1回の解除で全対象が開く）。
+   パスワードは平文で保持せず、SHA-256ハッシュと照合する（誤操作・いたずら防止の画面ロック）。
+   解除状態はこのブラウザタブのセッション中だけ保持し、ログアウトで再ロックする。 */
+var ADMIN_PW_HASH = "cc061e50b39d1cb1ace6754858c448f862e11f2d8919dbf818d9c1d7d3a30e6c";
+var ADMIN_UNLOCK_KEY = "attendance-tool.admin-unlocked.v1";
+function sha256Hex(text){
+  try {
+    if (!window.crypto || !crypto.subtle || !crypto.subtle.digest) return Promise.resolve(null);
+    var buf = new TextEncoder().encode(String(text == null ? "" : text));
+    return crypto.subtle.digest("SHA-256", buf).then(function(digest){
+      var bytes = new Uint8Array(digest);
+      var hex = "";
+      for (var i = 0; i < bytes.length; i++) hex += ("0" + bytes[i].toString(16)).slice(-2);
+      return hex;
+    }).catch(function(){ return null; });
+  } catch (e) { return Promise.resolve(null); }
+}
+function restoreAdminUnlock(){
+  try { state.adminUnlocked = sessionStorage.getItem(ADMIN_UNLOCK_KEY) === "1"; }
+  catch (e) { state.adminUnlocked = false; }
+}
+function setAdminUnlocked(v){
+  state.adminUnlocked = !!v;
+  try {
+    if (v) sessionStorage.setItem(ADMIN_UNLOCK_KEY, "1");
+    else sessionStorage.removeItem(ADMIN_UNLOCK_KEY);
+  } catch (e) {}
+  renderAdminLock();
+}
+function renderAdminLock(){
+  var bar = $("adminLockBar"); if (!bar) return;
+  var unlocked = !!state.adminUnlocked;
+  bar.classList.toggle("unlocked", unlocked);
+  $("adminLockStatus").textContent = unlocked ? "管理者操作は解除中です" : "管理者操作はロックされています";
+  $("adminLockHint").textContent = unlocked
+    ? "このタブを開いている間は、リストの作成・名前変更・削除、その日のリセット、全データ書き出しができます。"
+    : "リストの作成・名前変更・削除、その日のリセット、全データ書き出しには管理者パスワードが必要です。既存リストの閲覧・切替はそのままできます。";
+  $("adminUnlockBtn").classList.toggle("hidden", unlocked);
+  $("adminRelockBtn").classList.toggle("hidden", !unlocked);
+  if (!unlocked) closeAdminPw();
+  var nameInput = $("newListName");
+  if (nameInput) nameInput.disabled = !unlocked;
+  var form = $("newListForm");
+  if (form) {
+    var submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.disabled = false;
+  }
+}
+function openAdminPw(){
+  // 詳細画面を開いている間は詳細側の入力欄を、それ以外はホーム側の入力欄を開く
+  var detail = $("detailView");
+  var inDetail = detail && !detail.classList.contains("hidden");
+  var form = $(inDetail ? "adminPwFormDetail" : "adminPwForm"); if (!form) return;
+  form.classList.remove("hidden");
+  var err = $(inDetail ? "adminPwErrDetail" : "adminPwErr"); if (err) err.classList.add("hidden");
+  var input = $(inDetail ? "adminPwInputDetail" : "adminPwInput"); input.value = "";
+  form.scrollIntoView({ block: "nearest" });
+  setTimeout(function(){ input.focus(); }, 30);
+}
+function closeAdminPw(){
+  [["adminPwForm", "adminPwErr", "adminPwInput"],
+   ["adminPwFormDetail", "adminPwErrDetail", "adminPwInputDetail"]].forEach(function(ids){
+    var form = $(ids[0]); if (form) form.classList.add("hidden");
+    var err = $(ids[1]); if (err) err.classList.add("hidden");
+    var input = $(ids[2]); if (input) input.value = "";
+  });
+}
+function tryAdminUnlock(pwValue, errEl, inputEl){
+  return sha256Hex(pwValue).then(function(hash){
+    if (hash && hash === ADMIN_PW_HASH) {
+      setAdminUnlocked(true);
+      closeAdminPw();
+      return true;
+    }
+    if (errEl) errEl.classList.remove("hidden");
+    if (inputEl) { inputEl.value = ""; inputEl.focus(); }
+    return false;
+  });
+}
+function requireAdminUnlock(){
+  if (state.adminUnlocked) return true;
+  openAdminPw();
+  toast("この操作には管理者パスワードが必要です");
+  return false;
+}
+function updateBackToTop(){
+  var btn = $("backToTopBtn"); if (!btn) return;
+  var app = $("appView");
+  var inApp = app && !app.classList.contains("hidden");
+  var scrolled = (window.scrollY || document.documentElement.scrollTop || 0) > 300;
+  btn.classList.toggle("hidden", !(inApp && scrolled));
 }
 function memberSort(a, b){
   var na = parseFloat(a.attendance_no), nb = parseFloat(b.attendance_no);
@@ -1145,6 +1379,7 @@ function setDate(s){
   loadAttendance();
   loadRecordedForMonth();
   loadMyProgress().then(function(){ renderAttendance(); });
+  if (state.historyOpen) loadHistory();
 }
 function syncDateUI(){
   $("dateInput").value = state.date;
@@ -1304,6 +1539,8 @@ function renderMyProgress(){
   var total = state.members.length;
   var done = state.members.filter(function(m){ return state.myChecked[m.id]; }).length;
   var pct = total ? Math.round(done / total * 100) : 0;
+  var titleEl = $("myProgressTitle");
+  if (titleEl) { var dn2 = myDisplayName(); titleEl.textContent = dn2 ? dn2 + "さんの確認進捗" : "自分の確認進捗"; }
   var txt = $("myProgressText"); if (txt) txt.textContent = done + "/" + total + "人（" + pct + "%）";
   var bar = $("myProgressBar"); if (bar) bar.style.width = pct + "%";
   var guide = $("nextGuide");
@@ -1324,6 +1561,75 @@ function renderMyProgress(){
   if (btn) btn.disabled = !nextUncheckedMember();
 }
 
+/* ================= 変更履歴（attendance_history） =================
+   出席状態・怪我・メモの変更を記録する。テーブル未作成などで記録に失敗しても、
+   出席保存自体は止めない（履歴画面側で「追加SQLが必要」と案内する）。 */
+var HISTORY_FIELD_LABELS = { status: "出席状態", injury: "怪我", memo: "メモ" };
+function fmtHistVal(field, val){
+  if (field === "status") return { present: "出席", absent: "欠席", unconfirmed: "未確認" }[val] || "未確認";
+  var s = val == null ? "" : String(val);
+  return s === "" ? "（空）" : s;
+}
+function logHistory(memberId, field, oldValue, newValue){
+  if (!state.user || !state.currentListId || !memberId) return;
+  var o = oldValue == null ? "" : String(oldValue);
+  var n = newValue == null ? "" : String(newValue);
+  if (o === n) return;
+  sb.from("attendance_history").insert({
+    list_id: state.currentListId, member_id: memberId, date: state.date,
+    field: field, old_value: o, new_value: n,
+    changed_by: state.user.id, changed_by_name: myLabel()
+  }).then(function(res){
+    if (res && res.error) { state.historyAvailable = false; }
+    else { state.historyAvailable = true; scheduleHistoryReload(); }
+  }).catch(function(){ state.historyAvailable = false; });
+}
+var historyReloadTimer = null;
+function scheduleHistoryReload(){
+  if (!state.historyOpen) return;
+  clearTimeout(historyReloadTimer);
+  historyReloadTimer = setTimeout(loadHistory, 600);
+}
+function loadHistory(){
+  var listEl = $("historyList"); if (!listEl || !state.currentListId) return Promise.resolve();
+  var statusEl = $("historyStatus"), note = $("historySqlNote");
+  statusEl.textContent = "読み込み中…";
+  return sb.from("attendance_history").select("*")
+    .eq("list_id", state.currentListId).eq("date", state.date)
+    .order("created_at", { ascending: false }).limit(200)
+    .then(function(res){
+      if (res.error) {
+        state.historyAvailable = false;
+        note.classList.remove("hidden");
+        listEl.innerHTML = "";
+        statusEl.textContent = "履歴を取得できませんでした";
+        return;
+      }
+      state.historyAvailable = true;
+      note.classList.add("hidden");
+      var rows = res.data || [];
+      statusEl.textContent = rows.length ? rows.length + "件" : "";
+      if (!rows.length) { listEl.innerHTML = '<p class="muted" style="margin-top:8px">この日の変更履歴はまだありません。</p>'; return; }
+      listEl.innerHTML = "";
+      rows.forEach(function(h){
+        var m = state.members.filter(function(x){ return x.id === h.member_id; })[0];
+        var when = h.created_at ? new Date(h.created_at) : null;
+        var timeStr = when ? ((when.getMonth()+1) + "/" + when.getDate() + " " + pad(when.getHours()) + ":" + pad(when.getMinutes()) + ":" + pad(when.getSeconds())) : "";
+        var item = document.createElement("div"); item.className = "history-item";
+        item.innerHTML =
+          '<span class="htime">' + esc(timeStr) + '</span> ' +
+          '<span class="hchange">' + esc(m ? ((m.attendance_no ? m.attendance_no + " " : "") + m.name) : "（削除されたメンバー）") + '：' +
+          esc(HISTORY_FIELD_LABELS[h.field] || h.field) + 'を「' + esc(fmtHistVal(h.field, h.old_value)) + '」→「' + esc(fmtHistVal(h.field, h.new_value)) + '」に変更</span><br>' +
+          '<span class="hby">変更者：' + esc(h.changed_by_name || "（不明）") + '</span>';
+        listEl.appendChild(item);
+      });
+    }).catch(function(){
+      state.historyAvailable = false;
+      note.classList.remove("hidden");
+      statusEl.textContent = "履歴を取得できませんでした";
+    });
+}
+
 function saveAttendance(memberId, patch){
   var cur = state.att[memberId] || {};
   var row = {
@@ -1333,13 +1639,21 @@ function saveAttendance(memberId, patch){
     memo: patch.memo != null ? patch.memo : (cur.memo || ""),
     updated_by: state.user.id
   };
+  // 変更があった項目だけを履歴対象にする
+  var diffs = [];
+  [["status", cur.status || "unconfirmed", row.status],
+   ["injury", cur.injury || "", row.injury],
+   ["memo", cur.memo || "", row.memo]].forEach(function(t){
+    if (String(t[1]) !== String(t[2])) diffs.push(t);
+  });
   // 楽観的に手元へ反映
   state.att[memberId] = Object.assign({}, cur, row);
   state.recordedDates[state.date] = true;
   // 作業途中の「最後に触った人」として自分の進捗にも記録する（チェック状態自体は変えない）
   if (state.lastMemberId !== memberId) { state.lastMemberId = memberId; scheduleSaveProgress(); renderMyProgress(); }
   return sb.from("attendance").upsert(row, { onConflict: "member_id,date" }).then(function(res){
-    if (res.error) { toast("保存に失敗：" + errText(res.error)); loadAttendance(); }
+    if (res.error) { toast("保存に失敗：" + errText(res.error)); loadAttendance(); return; }
+    diffs.forEach(function(t){ logHistory(memberId, t[0], t[1], t[2]); });
   });
 }
 
@@ -1493,6 +1807,61 @@ function exportCsv(){
   document.body.appendChild(a); a.click();
   setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 400);
   toast("CSVを書き出しました");
+}
+
+/* ================= 全データ一括書き出し（管理者ロック必須） ================= */
+/* PostgRESTの既定上限（通常1,000行）で黙って切り捨てられないよう、ページングで全件取得する */
+function fetchAllRows(table){
+  var PAGE = 1000;
+  var all = [];
+  function step(offset){
+    return sb.from(table).select("*").order("id", { ascending: true }).limit(PAGE).offset(offset)
+      .then(function(res){
+        if (res.error) return { data: null, error: res.error };
+        var rows = res.data || [];
+        all = all.concat(rows);
+        if (rows.length === PAGE) return step(offset + PAGE);
+        return { data: all, error: null };
+      });
+  }
+  return step(0);
+}
+function exportAllData(){
+  if (!requireAdminUnlock()) return;
+  var statusEl = $("exportAllStatus");
+  statusEl.textContent = "取得中…";
+  Promise.all([
+    fetchAllRows("lists"),
+    fetchAllRows("members"),
+    fetchAllRows("attendance")
+  ]).then(function(results){
+    for (var i = 0; i < results.length; i++) {
+      if (results[i].error) {
+        statusEl.textContent = "";
+        toast("書き出しに失敗：" + errText(results[i].error));
+        return;
+      }
+    }
+    var payload = {
+      exported_at: new Date().toISOString(),
+      exported_by: myLabel(),
+      lists: results[0].data || [],
+      members: results[1].data || [],
+      attendance: results[2].data || []
+    };
+    var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    var now = new Date();
+    a.download = "出席データ一括書き出し_" + fmtDate(now) + "_" + pad(now.getHours()) + pad(now.getMinutes()) + ".json";
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 400);
+    statusEl.textContent = "リスト" + payload.lists.length + "件／メンバー" + payload.members.length + "人／出席記録" + payload.attendance.length + "件を書き出しました";
+    toast("全データを書き出しました");
+  }).catch(function(e){
+    statusEl.textContent = "";
+    toast("書き出しに失敗：" + errText(e));
+  });
 }
 
 /* ================= Realtime ================= */
